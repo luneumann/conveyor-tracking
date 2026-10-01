@@ -11,3 +11,5 @@ recordings/
 # Taught templates are personal camera images (may show faces, workplaces): never commit them.
 templates/*
 !templates/synthetic_part.png
+models/*.onnx
+models/objects/

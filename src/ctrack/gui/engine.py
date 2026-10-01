@@ -23,12 +23,14 @@ import numpy as np
 from ..camera.video_file import Recorder
 from ..config import load_config
 from ..metrics import MetricsLogger
-from ..models import fetch_hand_model
+from ..models import fetch_hand_model, fetch_vision_models
 from ..pipeline import Pipeline
 from ..publisher.base import NullPublisher
 from ..publisher.udp import UdpPublisher
 from ..registry import load_builtins
+from ..objectmodel import ObjectModel, train_object_model
 from ..teach import save_template
+from ..vision.onnx_models import DinoFeatures, SamSegmenter, vision_models_present
 from ..types import TrackState
 from ..visualizer import OverlayRenderer
 
@@ -38,6 +40,7 @@ PRESETS = {  # motion preset -> (process_noise, measurement_noise)
     "hand": (300000.0, 4.0),  # hand-held / jerky: follows quickly (see SETUP.md, filter tuning)
 }
 BUILTIN_TEMPLATES = {"synthetic_part"}
+SPEEDS = {"fast": (140, 336), "balanced": (168, 448), "precise": (224, 448)}   # learned detector: (crop edge, global width)
 
 
 @dataclass
@@ -47,6 +50,9 @@ class Settings:
     recording: str = ""             # file name in recordings/ (source == replay)
     detector: str = "template"      # hand | template
     template: str = "synthetic_part"
+    learned: str = ""               # name of a taught object (detector == learned)
+    obj_score: float = 0.6
+    speed: str = "balanced"         # fast | balanced | precise (learned detector)
     preset: str = "band"            # band | hand
     min_score: float = 0.85
     horizon_ms: float = 100.0
@@ -71,12 +77,18 @@ class Settings:
                 value = kind(value)
             if key == "source" and value not in ("camera", "demo", "replay"):
                 raise ValueError("source must be camera, demo or replay")
-            if key == "detector" and value not in ("hand", "template"):
-                raise ValueError("detector must be hand or template")
+            if key == "detector" and value not in ("hand", "template", "learned"):
+                raise ValueError("detector must be hand, template or learned")
+            if key == "speed" and value not in SPEEDS:
+                raise ValueError("unknown speed")
             if key == "preset" and value not in PRESETS:
                 raise ValueError("unknown preset")
             if key == "min_score":
                 value = min(max(value, 0.3), 0.99)
+            if key == "obj_score":
+                value = min(max(value, 0.2), 0.95)
+            if key == "learned" and value and not NAME_RE.match(value):
+                raise ValueError("invalid object name")
             if key == "horizon_ms":
                 value = min(max(value, 0.0), 1000.0)
             if key == "coast_ms":
@@ -92,7 +104,7 @@ class Settings:
 
 
 #: Settings that need a camera/detector restart when changed while running.
-RESTART_KEYS = {"source", "device", "recording", "detector", "template"}
+RESTART_KEYS = {"source", "device", "recording", "detector", "template", "learned"}
 
 
 def _num(v: float) -> float | None:
@@ -117,6 +129,16 @@ class Engine:
         self._last_raw: np.ndarray | None = None
         self._teach_frame: np.ndarray | None = None
         self._tpl_cache: tuple[tuple, list[dict[str, Any]]] | None = None
+        self.objects_dir = root / "models" / "objects"
+        self._vision_lock = threading.Lock()
+        self._sam: SamSegmenter | None = None
+        self._dino: DinoFeatures | None = None
+        self._sam_frame_id: int | None = None
+        self._learn_mask: np.ndarray | None = None
+        self._learn_samples: list[tuple[np.ndarray, np.ndarray]] = []
+        self._learn_thumbs: list[bytes] = []
+        self._learn = {"phase": "idle", "progress": 0.0, "error": None}
+        self._obj_cache: tuple[tuple, list[dict[str, Any]]] | None = None
         self.settings = self._load_settings()
         self.status: dict[str, Any] = self._idle_status()
 
@@ -133,6 +155,8 @@ class Engine:
             pass
         if s.detector == "template" and not self._template_path(s.template).exists():
             s.template = "synthetic_part"
+        if s.detector == "learned" and not (self.objects_dir / f"{s.learned}.npz").exists():
+            s.detector, s.learned = "template", ""
         return s
 
     def _save_settings(self) -> None:
@@ -147,7 +171,7 @@ class Engine:
             changed = self.settings.update(data)
             if "detector" in changed and "preset" not in data:
                 # Sensible default motion model per detector; the user can override it.
-                self.settings.update({"preset": "hand" if self.settings.detector == "hand" else "band"})
+                self.settings.update({"preset": "band" if self.settings.detector == "template" else "hand"})
             running = self._running()
         self._save_settings()
         if running and changed & RESTART_KEYS:
@@ -195,7 +219,7 @@ class Engine:
                                    "exposure_offset_ms": 30}
         elif s.source == "demo":
             overrides["camera"] = {"type": "synthetic", "width": 1280, "height": 720, "fps": 30,
-                                   "velocity": [250.0, 15.0], "omega": 0.3, "start": [100.0, 300.0, 0.0],
+                                   "velocity": [250.0, 0.0], "omega": 0.3, "start": [100.0, 360.0, 0.0],
                                    "image_noise": 6.0, "jitter_s": 0.002, "realtime": True}
         else:
             path = self._recording_path(s.recording)
@@ -206,6 +230,17 @@ class Engine:
         if s.detector == "hand":
             overrides["detector"] = {"type": "hand", "min_confidence": 0.6,
                                      "model_path": str(self.root / "models" / "hand_landmarker.task")}
+        elif s.detector == "learned" and not s.learned:
+            overrides["detector"] = {"type": "none"}   # nothing taught yet: live preview so the first photo can be taken
+        elif s.detector == "learned":
+            path = self.objects_dir / f"{s.learned}.npz"
+            if not path.exists():
+                raise ValueError(f"Gelerntes Objekt '{s.learned}' nicht gefunden – bitte zuerst anlernen")
+            if not vision_models_present(self.root / "models"):
+                raise ValueError("Die Bild-Modelle fehlen – in der Oberfläche 'Modelle laden' drücken")
+            overrides["detector"] = {"type": "learned", "model_path": str(path), "models_dir": str(self.root / "models"),
+                                     "min_score": s.obj_score, "view_size": SPEEDS[s.speed][0],
+                                     "global_width": SPEEDS[s.speed][1]}
         else:
             tpl = self._template_path(s.template)
             if not tpl.exists():
@@ -320,10 +355,14 @@ class Engine:
             q, r = PRESETS[live.preset]
             predictor.configure(process_noise=q, measurement_noise=r)
             applied["preset"] = live.preset
-        if live.min_score != applied.get("min_score"):
+        if live.speed != applied.get("speed") and hasattr(pipeline.detector, "view_size"):
+            pipeline.detector.view_size, pipeline.detector.global_width = SPEEDS[live.speed]
+        applied["speed"] = live.speed
+        score = live.obj_score if live.detector == "learned" else live.min_score
+        if score != applied.get("score"):
             if hasattr(pipeline.detector, "min_score"):
-                pipeline.detector.min_score = live.min_score
-            applied["min_score"] = live.min_score
+                pipeline.detector.min_score = score
+            applied["score"] = score
 
     def _publish_status(self, step, stats, tracker, frames: int, sent: int, sending: bool, recording: bool) -> None:
         pose = step.pose
@@ -367,6 +406,9 @@ class Engine:
             return {**self.status, "settings": asdict(self.settings), "presets": list(PRESETS),
                     "templates": self.list_templates(), "recordings": self.list_recordings(),
                     "teach_ready": self._teach_frame is not None,
+                    "learned": self.list_learned(), "vision_models": vision_models_present(self.root / "models"),
+                    "learn": {**self._learn, "count": len(self._learn_samples), "has_frame": self._teach_frame is not None,
+                              "has_mask": self._learn_mask is not None},
                     "hand_model": (self.root / "models" / "hand_landmarker.task").exists()}
 
     # ---- teach-in ---------------------------------------------------------------------------
@@ -404,6 +446,142 @@ class Engine:
         self._teach_frame = None
         self.update_settings({"detector": "template", "template": name})
         return {"name": name, "width": w, "height": h, "mask_coverage": coverage}
+
+    # ---- learned objects: capture -> click -> add -> train ------------------------------------
+    def download_vision_models(self) -> None:
+        fetch_vision_models(self.root / "models")
+
+    def _vision(self) -> tuple[SamSegmenter, DinoFeatures]:
+        if not vision_models_present(self.root / "models"):
+            raise ValueError("Die Bild-Modelle fehlen – bitte 'Modelle laden' drücken")
+        if self._sam is None:
+            self._sam = SamSegmenter(self.root / "models")
+        if self._dino is None:
+            self._dino = DinoFeatures(self.root / "models")
+        return self._sam, self._dino
+
+    def learn_new_photo(self) -> None:
+        """A new photo was frozen / uploaded: forget clicks of the previous one."""
+        self._learn_mask = None
+        self._sam_frame_id = None
+
+    def learn_segment(self, points: list[list[float]], labels: list[int]) -> float:
+        """Run SAM for the current photo with the given clicks; returns the mask's share of the image."""
+        frame = self._teach_frame
+        if frame is None:
+            raise ValueError("Kein Foto")
+        if not points or len(points) != len(labels) or len(points) > 20:
+            raise ValueError("Ungültige Klicks")
+        h, w = frame.shape[:2]
+        pts = [(min(max(float(x), 0), w - 1), min(max(float(y), 0), h - 1)) for x, y in points]
+        with self._vision_lock:
+            sam, _ = self._vision()
+            if self._sam_frame_id != id(frame):
+                sam.set_image(frame)
+                self._sam_frame_id = id(frame)
+            self._learn_mask = sam.segment(pts, [1 if v else 0 for v in labels])
+        return float(self._learn_mask.mean())
+
+    def learn_mask_png(self) -> bytes | None:
+        m = self._learn_mask
+        if m is None:
+            return None
+        rgba = np.zeros((*m.shape, 4), np.uint8)
+        rgba[m] = (200, 190, 40, 120)                       # BGRA: teal fill
+        edge = cv2.morphologyEx(m.astype(np.uint8), cv2.MORPH_GRADIENT, np.ones((3, 3), np.uint8)) > 0
+        rgba[edge] = (200, 190, 40, 255)
+        return cv2.imencode(".png", rgba)[1].tobytes()
+
+    def _thumb(self, img: np.ndarray, mask: np.ndarray, size: int = 160) -> bytes:
+        x, y, w, h = cv2.boundingRect(mask.astype(np.uint8))
+        pad = int(0.15 * max(w, h))
+        x0, y0 = max(x - pad, 0), max(y - pad, 0)
+        crop = img[y0:y + h + pad, x0:x + w + pad].copy()
+        cm = mask[y0:y + h + pad, x0:x + w + pad]
+        crop[~cm] = (crop[~cm] * 0.35).astype(np.uint8)       # dim everything outside the mask
+        s = size / max(crop.shape[:2])
+        return cv2.imencode(".jpg", cv2.resize(crop, None, fx=s, fy=s, interpolation=cv2.INTER_AREA))[1].tobytes()
+
+    def learn_add(self) -> int:
+        frame, mask = self._teach_frame, self._learn_mask
+        if frame is None or mask is None:
+            raise ValueError("Zuerst auf das Objekt klicken")
+        if mask.mean() < 0.002:
+            raise ValueError("Die Maske ist zu klein")
+        if len(self._learn_samples) >= 12:
+            raise ValueError("Maximal 12 Fotos")
+        self._learn_samples.append((frame.copy(), mask.copy()))
+        self._learn_thumbs.append(self._thumb(frame, mask))
+        self._teach_frame, self._learn_mask, self._sam_frame_id = None, None, None
+        return len(self._learn_samples)
+
+    def learn_remove(self, index: int) -> None:
+        if 0 <= index < len(self._learn_samples):
+            del self._learn_samples[index], self._learn_thumbs[index]
+
+    def learn_reset(self) -> None:
+        self._learn_samples.clear()
+        self._learn_thumbs.clear()
+        self._teach_frame, self._learn_mask, self._sam_frame_id = None, None, None
+        self._learn.update(phase="idle", progress=0.0, error=None)
+
+    def learn_sample_jpg(self, i: int) -> bytes | None:
+        return self._learn_thumbs[i] if 0 <= i < len(self._learn_thumbs) else None
+
+    def learn_train(self, name: str) -> None:
+        if not NAME_RE.match(name):
+            raise ValueError("Name: 1–40 Zeichen, nur Buchstaben, Ziffern, _ und -")
+        if len(self._learn_samples) < 2:
+            raise ValueError("Mindestens 2 Fotos (empfohlen: 5 mit verschiedenem Abstand und leichter Drehung)")
+        if self._learn["phase"] == "training":
+            raise ValueError("Training läuft bereits")
+        samples = list(self._learn_samples)
+        thumb = self._learn_thumbs[0]
+        self._learn.update(phase="training", progress=0.0, error=None)
+
+        def work() -> None:
+            try:
+                with self._vision_lock:
+                    _, dino = self._vision()
+                    model = train_object_model(samples, dino, name,
+                                               progress=lambda f: self._learn.update(progress=float(f)))
+                model.save(self.objects_dir / f"{name}.npz")
+                (self.objects_dir / f"{name}.jpg").write_bytes(thumb)
+                self._learn_samples.clear()
+                self._learn_thumbs.clear()
+                self._learn.update(phase="done", progress=1.0)
+                self.update_settings({"detector": "learned", "learned": name})
+            except Exception as e:  # shown in the GUI
+                self._learn.update(phase="error", error=f"{type(e).__name__}: {e}")
+
+        threading.Thread(target=work, daemon=True, name="ctrack-train").start()
+
+    def list_learned(self) -> list[dict[str, Any]]:
+        files = sorted(self.objects_dir.glob("*.npz")) if self.objects_dir.exists() else []
+        sig = tuple((p.name, p.stat().st_mtime_ns) for p in files)
+        if self._obj_cache is not None and self._obj_cache[0] == sig:
+            return self._obj_cache[1]
+        out = []
+        for p in files:
+            try:
+                m = ObjectModel.load(p)
+            except Exception:
+                continue
+            out.append({"name": p.stem, "images": m.n_images, "created": m.created, "version": p.stat().st_mtime_ns})
+        self._obj_cache = (sig, out)
+        return out
+
+    def learned_jpg(self, name: str) -> bytes | None:
+        p = self.objects_dir / f"{name}.jpg"
+        return p.read_bytes() if NAME_RE.match(name) and p.exists() else None
+
+    def delete_learned(self, name: str) -> None:
+        if not NAME_RE.match(name):
+            raise ValueError("invalid name")
+        (self.objects_dir / f"{name}.npz").unlink(missing_ok=True)
+        (self.objects_dir / f"{name}.jpg").unlink(missing_ok=True)
+        if self.settings.learned == name:
+            self.update_settings({"detector": "template", "learned": ""})
 
     # ---- templates / recordings -------------------------------------------------------------
     def _template_path(self, name: str) -> Path:

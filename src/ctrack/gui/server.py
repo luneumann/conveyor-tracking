@@ -81,6 +81,17 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/teach/frame.jpg":
                 jpg = self.engine.teach_jpeg()
                 return self._send(200, jpg, "image/jpeg") if jpg else self._error(404, "no frame")
+            if path == "/api/learn/mask.png":
+                png = self.engine.learn_mask_png()
+                return self._send(200, png, "image/png") if png else self._error(404, "no mask")
+            m = re.fullmatch(r"/api/learn/sample/(\d+)\.jpg", path)
+            if m:
+                jpg = self.engine.learn_sample_jpg(int(m.group(1)))
+                return self._send(200, jpg, "image/jpeg") if jpg else self._error(404, "not found")
+            m = re.fullmatch(r"/api/learned/([A-Za-z0-9_-]+)\.jpg", path)
+            if m:
+                jpg = self.engine.learned_jpg(m.group(1))
+                return self._send(200, jpg, "image/jpeg") if jpg else self._error(404, "not found")
             m = re.fullmatch(r"/api/templates/([A-Za-z0-9_-]+?)(_mask)?\.png", path)
             if m:
                 png = self.engine.template_png(m.group(1), mask=bool(m.group(2)))
@@ -146,10 +157,35 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/teach/freeze":
                 if not e.freeze_frame():
                     return self._error(409, "Kamera läuft nicht – zuerst starten oder ein Bild laden")
+                e.learn_new_photo()
                 return self._json({"ok": True})
             if path == "/api/teach/upload":
                 e.load_teach_image(raw)
+                e.learn_new_photo()
                 return self._json({"ok": True})
+            if path == "/api/learn/segment":
+                d = self._json_body(raw)
+                return self._json({"area": e.learn_segment(d.get("points") or [], d.get("labels") or [])})
+            if path == "/api/learn/add":
+                return self._json({"count": e.learn_add()})
+            if path == "/api/learn/remove":
+                e.learn_remove(int(self._json_body(raw).get("index", -1)))
+                return self._json(e.snapshot())
+            if path == "/api/learn/reset":
+                e.learn_reset()
+                return self._json(e.snapshot())
+            if path == "/api/learn/train":
+                e.learn_train(str(self._json_body(raw).get("name", "")))
+                return self._json({"ok": True})
+            if path == "/api/learned/delete":
+                e.delete_learned(str(self._json_body(raw).get("name")))
+                return self._json(e.snapshot())
+            if path == "/api/vision-models":
+                try:
+                    e.download_vision_models()
+                except OSError as ex:
+                    return self._error(502, f"Download fehlgeschlagen: {ex}")
+                return self._json(e.snapshot())
             if path == "/api/teach/save":
                 d = self._json_body(raw)
                 roi = d.get("roi")

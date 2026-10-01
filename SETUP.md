@@ -33,7 +33,23 @@ Erkennung **Hand** wählen. Fehlt das Modell, erscheint **Handmodell laden** (7,
 Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil unter *Feineinstellungen* auf
 **Hand** stellen (wird beim Wechsel der Erkennung automatisch gesetzt).
 
-### 5. Bauteil einlernen
+### 5. Objekt anlernen („Gelernt“, empfohlen)
+
+1. Beim ersten Mal: Erkennung **Gelernt** → **Modelle laden** (ca. 133 MB, einmalig).
+2. Quelle *Kamera* → **Starten**. Die Kamera läuft zunächst nur als Vorschau.
+3. **Neues Objekt anlernen**. Objekt in die Kamera halten → **In 3 s aufnehmen** (so hast du beide Hände frei)
+   oder **Foto aufnehmen**.
+4. Auf das **Objekt klicken**. Zeigt die türkise Maske nur einen Teil: weiter auf den fehlenden Teil klicken.
+   Zu viel markiert (z. B. die Hand): **rechte Maustaste** auf den Überschuss. → **Foto übernehmen**.
+5. Das Ganze **~5 Mal** mit **anderem Abstand, leicht gedrehtem Objekt, anderem Griff und gern anderem Hintergrund**.
+6. Name eintragen → **Trainieren** (ca. 15 s). Danach ist das Objekt aktiv; **Tracking starten**.
+
+Tipps: Je unterschiedlicher die 5 Fotos, desto robuster. Wird fälschlich etwas anderes erkannt: **Mindest-Sicherheit**
+(Feineinstellungen) erhöhen oder mit mehr/anderen Fotos neu anlernen. Ist es zu langsam: **Tempo** auf *Schnell*
+(ca. 20 statt 15 Bilder/s, etwas ungenauer). Grenzen siehe ADR-011 (θ nur modulo 180°, Objekte kleiner als ~12 % der
+Bildbreite werden unzuverlässig, max. ~20 fps).
+
+### 5b. Flaches Teil per Referenzbild einlernen (Template-Matching)
 
 1. Quelle *Kamera* → **Starten**, Erkennung **Bauteil**.
 2. Teil so vor die Kamera legen, wie θ = 0 gelten soll.
@@ -141,6 +157,13 @@ Das Projekt liegt in einem privaten Repo: https://github.com/luneumann/conveyor-
   Schwerpunkt (Ground-Truth-Fehler bis ~20 px nur dort; innen ~0,05 px). Betrifft nur die Synthetik.
 - **Latenz bei Replay** misst nur die Verarbeitungszeit (`t_sent − t_read`), weil `t_exposure`
   aus der Aufnahme stammt (ADR-007).
+- **Gelerntes Objekt nur synthetisch und an einem Foto-Satz geprüft.** Alle Genauigkeitswerte (ADR-011) stammen von einem
+  synthetisch komponierten Teil bzw. von Szenen, die aus *einem* Handyfoto zusammengesetzt wurden. Mit echten
+  Kameraaufnahmen, anderen Objekten und anderen Hintergründen ist noch nichts gemessen — dafür sind echte Aufnahmen nötig.
+- **Bildrate des gelernten Objekts 11–20 fps** (PRD-Ziel 25): Das Bildmodell läuft auf der CPU (CoreML war langsamer).
+- **θ des gelernten Objekts nur modulo 180°** (Hauptachse der Maske).
+- **Beim Beenden von Python erscheint gelegentlich** `libc++abi: terminating … recursive_mutex lock failed` aus einer
+  nativen Bibliothek (MediaPipe/ONNX). Exit-Code und Ergebnisse sind nicht betroffen; Ursache nicht untersucht.
 - **Web-Oberfläche ohne Anmeldung.** Sie läuft nur auf diesem Rechner (`127.0.0.1`) und prüft Host und Header gegen
   Angriffe aus dem Browser, hat aber kein Login (ADR-010). Nicht ins Netz öffnen.
 - **Demo-Band hat ~25–28 fps** (die Simulation selbst kostet Rechenzeit); die Kamera-Bildrate ist noch nicht in der GUI gemessen.

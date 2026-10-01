@@ -3,7 +3,7 @@
 Kameragestützter "virtueller Encoder": ein Objekt einlocken, seine Pose (x, y, θ) verfolgen,
 latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Roboter senden.
 
-**Stack:** Python 3.11 · OpenCV · MediaPipe Tasks (Hand) · NumPy (Kalman) · lokale Web-GUI (stdlib) · YAML-Config · UDP/JSON
+**Stack:** Python 3.11 · OpenCV · MediaPipe Tasks (Hand) · ONNX Runtime (MobileSAM, DINOv2) · NumPy (Kalman) · lokale Web-GUI (stdlib) · YAML-Config · UDP/JSON
 
 ## Schnellstart (ohne Terminal)
 
@@ -11,9 +11,12 @@ latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Ro
 öffnet sich im Browser die Oberfläche (`http://127.0.0.1:8765`):
 
 1. **Quelle** wählen: *Kamera*, *Demo-Band* (simuliert, ohne Kamera) oder *Aufnahme* → **Starten**.
-2. **Erkennung** wählen: *Bauteil (Referenzbild)* oder *Hand*.
-   Neues Teil: Teil in Nullstellung zeigen → **Aus Livebild einlernen** → Rechteck eng ums Teil ziehen →
-   Namen vergeben → **Speichern**.
+2. **Erkennung** wählen:
+   - **Gelernt** (für Objekte, die du in die Kamera hältst): **Neues Objekt anlernen** → ~5 Fotos aufnehmen
+     (anderer Abstand, leicht gedreht; auch „In 3 s aufnehmen“), jedes Mal **einmal aufs Objekt klicken** →
+     **Trainieren** (Sekunden). Beim ersten Mal einmalig **Modelle laden** (ca. 133 MB).
+   - **Referenzbild** (flache Teile mit gleichbleibendem Abstand): **Aus Livebild einlernen**, Rechteck ziehen.
+   - **Hand**.
 3. **Tracking starten** (oder „Automatisch einlocken“). Kennzahlen (Bildrate, Latenz, Vorhersagefehler)
    erscheinen live mit Zielwerten.
 4. Optional: **Pose per UDP senden**, **Video aufzeichnen**, Feineinstellungen.
@@ -23,7 +26,7 @@ Alles Weitere steht in `SETUP.md`. Für Entwickler gibt es zusätzlich die Komma
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                                              # 92 Tests, ohne Kamera
+pytest                                              # 116 Tests, ohne Kamera
 python -m ctrack.gui                                # Web-Oberfläche (wie der Doppelklick)
 python -m ctrack -c config/synthetic.yaml --auto-lock   # OpenCV-Fenster statt Web-GUI
 python tools/receiver.py                            # Stream-Empfänger (zweites Terminal)

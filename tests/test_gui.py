@@ -1,5 +1,6 @@
 import http.client
 import json
+import math
 import shutil
 import threading
 import time
@@ -199,3 +200,91 @@ def test_taught_template_detects_in_session(gui):
     st = gui.wait(lambda s: s["running"] and s["detected"], timeout=25)
     assert st["score"] > 0.85
     gui.post("/api/session", {"action": "stop"})
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Learned objects: photo -> one click (SAM) -> add -> train (DINOv2 head) -> detect
+VISION = (ROOT / "models" / "mobile_sam_image_encoder.onnx").exists() and (ROOT / "models" / "dinov2_small.onnx").exists()
+needs_vision = pytest.mark.skipif(not VISION, reason="MobileSAM / DINOv2 ONNX models not downloaded")
+
+
+@pytest.fixture()
+def gui_vision(gui):
+    (gui.root / "models").mkdir(exist_ok=True)
+    for f in ("mobile_sam_image_encoder.onnx", "sam_mask_decoder_single.onnx", "dinov2_small.onnx"):
+        (gui.root / "models" / f).symlink_to(ROOT / "models" / f)
+    return gui
+
+
+def _photo(scale: float, theta: float, seed: int) -> bytes:
+    """Textured background with the synthetic part at a given zoom / rotation (centre of the image)."""
+    rng = np.random.default_rng(seed)
+    bg = cv2.GaussianBlur(rng.normal(70, 30, (400, 640, 1)).astype(np.float32) * np.ones((1, 1, 3), np.float32), (0, 0), 4)
+    img = np.clip(bg, 0, 255).astype(np.uint8)
+    render_object(img, Pose(320, 200, theta), 160 * scale, 70 * scale)
+    return cv2.imencode(".png", img)[1].tobytes()
+
+
+@needs_vision
+def test_learn_flow_click_segment_add_train_and_detect(gui_vision):
+    g = gui_vision
+    st = g.status()
+    assert st["vision_models"] and st["learn"]["count"] == 0
+    for i, (sc, th) in enumerate([(1.0, 0.0), (0.7, 0.35), (1.3, -0.3)]):
+        assert g.req("POST", "/api/teach/upload", _photo(sc, th, i), headers={"X-Requested-With": "ctrack"})[0] == 200
+        assert g.req("GET", "/api/learn/mask.png")[0] == 404          # new photo: no mask yet
+        # One click often gives only part of the object; a second click on the missing part completes it
+        # (this is exactly what the GUI invites the user to do).
+        c, s_ = math.cos(th), math.sin(th)
+        second = [320 + c * 0.3 * 160 * sc, 200 + s_ * 0.3 * 160 * sc]
+        code, d = g.post("/api/learn/segment", {"points": [[320, 200], second], "labels": [1, 1]})
+        expected = 160 * 70 * sc * sc / (640 * 400)
+        assert code == 200 and 0.8 * expected < d["area"] < 1.2 * expected  # the whole part, not more
+        code, png = g.req("GET", "/api/learn/mask.png")
+        assert code == 200 and png[:4] == b"\x89PNG"
+        code, d = g.post("/api/learn/add")
+        assert code == 200 and d["count"] == i + 1
+        assert g.req("GET", f"/api/learn/sample/{i}.jpg")[1][:2] == b"\xff\xd8"
+    assert g.post("/api/learn/add")[0] == 400                          # nothing selected any more
+    assert g.post("/api/learn/train", {"name": "../x"})[0] == 400
+
+    assert g.post("/api/learn/train", {"name": "synth"})[0] == 200
+    st = g.wait(lambda s: s["learn"]["phase"] in ("done", "error"), timeout=60)
+    assert st["learn"]["phase"] == "done", st["learn"]
+    assert st["settings"]["detector"] == "learned" and st["settings"]["learned"] == "synth"
+    assert [o["name"] for o in st["learned"]] == ["synth"] and st["learned"][0]["images"] == 3
+    assert g.req("GET", "/api/learned/synth.jpg")[1][:2] == b"\xff\xd8"
+    assert st["learn"]["count"] == 0                                   # samples consumed
+
+    g.post("/api/settings", {"source": "demo"})
+    g.post("/api/session", {"action": "start"})
+    st = g.wait(lambda s: s["running"] and s["detected"], timeout=40)
+    assert st["score"] >= 0.6
+    g.post("/api/command", {"name": "lock"})
+    st = g.wait(lambda s: s["state"] == "TRACKING", timeout=20)
+    assert st["pose"] is not None
+    g.post("/api/session", {"action": "stop"})
+
+    code, d = g.post("/api/learned/delete", {"name": "synth"})
+    assert code == 200 and d["learned"] == [] and d["settings"]["detector"] == "template"
+    assert not (g.root / "models" / "objects" / "synth.npz").exists()
+
+
+@needs_vision
+def test_learn_validation(gui_vision):
+    g = gui_vision
+    assert g.post("/api/learn/segment", {"points": [[1, 1]], "labels": [1]})[0] == 400      # no photo
+    g.req("POST", "/api/teach/upload", _photo(1.0, 0.0, 0), headers={"X-Requested-With": "ctrack"})
+    assert g.post("/api/learn/segment", {"points": [], "labels": []})[0] == 400
+    assert g.post("/api/learn/segment", {"points": [[1, 1]], "labels": [1, 0]})[0] == 400
+    assert g.post("/api/learn/train", {"name": "ok"})[0] == 400                              # no samples
+    assert g.post("/api/learned/delete", {"name": "../evil"})[0] == 400
+    assert g.req("GET", "/api/learned/..%2fsecret.jpg")[0] == 404
+    assert g.post("/api/learn/reset")[0] == 200
+
+
+def test_learn_without_models_is_a_clear_error(gui):
+    gui.req("POST", "/api/teach/upload", _photo(1.0, 0.0, 0), headers={"X-Requested-With": "ctrack"})
+    code, d = gui.post("/api/learn/segment", {"points": [[320, 200]], "labels": [1]})
+    assert code == 400 and "Modelle" in d["error"]
+    assert not gui.status()["vision_models"]

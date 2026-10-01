@@ -150,6 +150,13 @@ dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0
 dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
 a { color: var(--accent); }
 
+.thumbs { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.thumb { position: relative; width: 76px; height: 56px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); background: var(--surface-2); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb button { position: absolute; top: 2px; right: 2px; width: 20px; height: 20px; border-radius: 50%; border: 0; background: rgba(8, 12, 16, .75); color: #fff; cursor: pointer; line-height: 1; }
+.thumb.empty { display: grid; place-items: center; color: var(--muted); font-size: 12px; border-style: dashed; }
+.prog { height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; flex-basis: 100%; }
+.prog i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
 #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none;
   background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 10px; font-weight: 600; transition: all .2s; z-index: 20; max-width: 90vw; }
 #toast.show { opacity: 1; transform: translateX(-50%); }
@@ -192,6 +199,28 @@ a { color: var(--accent); }
       <button class="btn primary" id="teachSave" disabled>Speichern</button>
     </div>
 
+    <div class="teachbar" id="learnBar">
+      <p class="hint" id="learnHint"></p>
+      <div class="thumbs" id="learnThumbs"></div>
+      <div class="spacer"></div>
+      <div class="row" id="lcCompose" style="margin:0">
+        <button class="btn primary" id="lcShot">Foto aufnehmen</button>
+        <button class="btn" id="lcShot3">In 3 s aufnehmen</button>
+        <button class="btn" id="lcFile">Bild laden …</button>
+        <input type="file" id="lcFileInput" accept="image/*" hidden>
+      </div>
+      <div class="row" id="lcClick" style="margin:0">
+        <button class="btn" id="lcClear">Klicks zurücksetzen</button>
+        <button class="btn" id="lcDiscard">Verwerfen</button>
+        <button class="btn primary" id="lcAdd" disabled>Foto übernehmen</button>
+      </div>
+      <div class="field" id="lcNameWrap"><label for="lcName">Name des Objekts</label><input type="text" id="lcName" maxlength="40" autocomplete="off" spellcheck="false" style="width:160px"></div>
+      <button class="btn primary" id="lcTrain" disabled>Trainieren</button>
+      <button class="btn" id="lcCancel">Abbrechen</button>
+      <div class="prog" id="lcProg" hidden><i></i></div>
+      <p class="note bad" id="lcErr" hidden style="flex-basis:100%"></p>
+    </div>
+
     <div class="metrics" id="metrics">
       <div class="tile" id="tFps"><div class="k">Bildrate</div><div class="v" id="vFps">–</div><div class="goal">Ziel ≥ 25 fps</div></div>
       <div class="tile" id="tLat"><div class="k">Latenz (p95)</div><div class="v" id="vLat">–</div><div class="goal">Ziel &lt; 100 ms</div></div>
@@ -219,12 +248,20 @@ a { color: var(--accent); }
     <div class="card">
       <h2><span class="n">2</span>Erkennung</h2>
       <div class="seg" role="radiogroup" aria-label="Erkennung" id="segDetector">
-        <button role="radio" data-v="template">Bauteil (Referenzbild)</button>
+        <button role="radio" data-v="learned">Gelernt</button>
+        <button role="radio" data-v="template">Referenzbild</button>
         <button role="radio" data-v="hand">Hand</button>
       </div>
       <p class="note" id="noteHand">Handerkennung (MediaPipe). Zum Testen ohne Bauteil.</p>
       <div id="noteNoModel"><p class="note bad">Das Handmodell (7,8 MB, von Google) fehlt noch.</p>
         <div class="row"><button class="btn small" id="btnModel">Handmodell laden</button></div></div>
+      <div id="learnSection">
+        <p class="note">Das Programm lernt dein Objekt aus etwa 5 Fotos: Objekt in die Kamera halten, <b>einmal anklicken</b>, fertig. Danach findet es das Objekt bei anderem Abstand und leichter Drehung wieder.</p>
+        <div id="noteVision" style="margin-top:10px"><p class="note bad">Dafür fehlen die Bild-Modelle (ca. 133 MB, einmalig, von Hugging Face).</p>
+          <div class="row"><button class="btn small" id="btnVision">Modelle laden</button></div></div>
+        <div class="gallery" id="galleryLearned" role="radiogroup" aria-label="Gelernte Objekte"></div>
+        <div class="row" style="margin-top:12px"><button class="btn small primary" id="btnLearn">Neues Objekt anlernen</button></div>
+      </div>
       <div id="tplSection">
         <div class="gallery" id="gallery" role="radiogroup" aria-label="Referenzbilder"></div>
         <div class="row" style="margin-top:12px">
@@ -266,6 +303,10 @@ a { color: var(--accent); }
           <select id="selPreset"><option value="band">Band (gleichmäßig, ruhig)</option><option value="hand">Hand (schnell, ruckelig)</option></select></div>
         <div class="slider"><label for="slHorizon">Vorhersage-Horizont</label><output id="oHorizon"></output><input type="range" id="slHorizon" min="0" max="300" step="10"></div>
         <div class="slider"><label for="slCoast">Überbrückung bei Verdeckung</label><output id="oCoast"></output><input type="range" id="slCoast" min="100" max="1000" step="50"></div>
+        <div class="field" id="fieldSpeed" style="margin-bottom:14px"><label for="selSpeed">Tempo (gelerntes Objekt)</label>
+          <select id="selSpeed"><option value="fast">Schnell (weniger genau)</option><option value="balanced">Ausgewogen</option><option value="precise">Genau (langsamer)</option></select></div>
+        <div class="slider" id="sliderObj"><label for="slObj">Mindest-Sicherheit (gelernt)</label><output id="oObj"></output><input type="range" id="slObj" min="0.2" max="0.95" step="0.01">
+          <p class="note">Höher = strenger (weniger Fehlerkennung), niedriger = findet das Objekt auch bei Verdeckung eher.</p></div>
         <div class="slider" id="sliderScore"><label for="slScore">Mindest-Übereinstimmung</label><output id="oScore"></output><input type="range" id="slScore" min="0.5" max="0.99" step="0.01">
           <p class="note">Höher = strenger (weniger Fehlmessungen), niedriger = findet verdeckte Teile eher.</p></div>
       </details>
@@ -307,7 +348,8 @@ const idle = (el) => document.activeElement !== el;
 /* ---------- rendering ---------- */
 function render() {
   if (!S) return;
-  const st = S.settings, running = S.running, teaching = !!teach;
+  const st = S.settings, running = S.running;
+  const teaching = !!teach || !!(learn && learn.phase === "click");
   const state = running ? S.state : "IDLE";
 
   // header pill
@@ -336,7 +378,8 @@ function render() {
   }
   if (!running) streamSession = null;
   const chip = $("#chip");
-  const chipText = running && !teaching ? (state === "SEARCHING" && S.lock_pending ? "Warte auf Objekt im Bild …" : (state === "LOST" ? "Verloren – Objekt zurück ins Bild bringen" : "")) : "";
+  const chipText = learn && learn.countdown ? `Foto in ${learn.countdown} …` :
+    running && !teaching ? (state === "SEARCHING" && S.lock_pending ? "Warte auf Objekt im Bild …" : (state === "LOST" ? "Verloren – Objekt zurück ins Bild bringen" : "")) : "";
   chip.textContent = chipText; chip.classList.toggle("show", !!chipText);
 
   // card 1: source
@@ -358,13 +401,17 @@ function render() {
 
   // card 2: detector
   setSeg("#segDetector", st.detector);
-  const isTpl = st.detector === "template";
+  const isTpl = st.detector === "template", isLearned = st.detector === "learned", isHand = st.detector === "hand";
   $("#tplSection").hidden = !isTpl;
-  $("#noteHand").hidden = isTpl;
-  $("#noteNoModel").hidden = isTpl || S.hand_model;
+  $("#learnSection").hidden = !isLearned;
+  $("#noteHand").hidden = !isHand;
+  $("#noteNoModel").hidden = !(isHand && !S.hand_model);
+  $("#noteVision").hidden = S.vision_models;
   renderGallery();
-  $("#btnTeachLive").disabled = !running || teaching || S.frames === 0;
-  $("#btnTeachFile").disabled = teaching;
+  renderLearned();
+  $("#btnTeachLive").disabled = !running || teaching || S.frames === 0 || !!learn;
+  $("#btnTeachFile").disabled = teaching || !!learn;
+  $("#btnLearn").disabled = !S.vision_models || !!learn || !!teach;
 
   // card 3: tracking
   const lock = $("#btnLock");
@@ -374,6 +421,7 @@ function render() {
   else if (running && S.lock_pending) { lock.textContent = "Warte auf Objekt … (abbrechen)"; lock.className = "btn block"; }
   else { lock.textContent = "Tracking starten"; lock.className = "btn primary block"; }
   $("#noteDet").textContent = !running ? "Zuerst die Kamera starten." :
+    st.detector === "learned" && !st.learned ? "Noch kein Objekt gelernt – links bei „Erkennung“ auf „Neues Objekt anlernen“ drücken." :
     S.detected ? `Objekt erkannt${S.score != null ? " (Übereinstimmung " + Math.round(S.score * 100) + " %)" : ""}.` : "Kein Objekt im Bild erkannt.";
   if (idle($("#swAuto"))) $("#swAuto").checked = st.auto_lock;
 
@@ -390,6 +438,11 @@ function render() {
   setSlider("#slCoast", "#oCoast", st.coast_ms, (v) => v + " ms");
   setSlider("#slScore", "#oScore", st.min_score, (v) => Math.round(v * 100) + " %");
   $("#sliderScore").hidden = !isTpl;
+  setSlider("#slObj", "#oObj", st.obj_score, (v) => Math.round(v * 100) + " %");
+  $("#sliderObj").hidden = !isLearned;
+  $("#fieldSpeed").hidden = !isLearned;
+  if (idle($("#selSpeed"))) $("#selSpeed").value = st.speed;
+  renderLearn();
 
   // metrics
   $("#vFps").innerHTML = running ? fmt(S.fps, 1) + " <small>fps</small>" : "–";
@@ -451,6 +504,8 @@ document.querySelectorAll("#segSource button").forEach((b) => (b.onclick = () =>
 document.querySelectorAll("#segDetector button").forEach((b) => (b.onclick = () => setSetting({ detector: b.dataset.v })));
 $("#selDevice").onchange = (e) => setSetting({ device: Number(e.target.value) });
 $("#selRec").onchange = (e) => setSetting({ recording: e.target.value });
+$("#btnVision").onclick = async () => { const b = $("#btnVision"); b.disabled = true; b.textContent = "Lädt (ca. 133 MB) …"; try { S = await api("/api/vision-models"); toast("Modelle geladen"); render(); } catch (e) { toast(e.message, true); } b.disabled = false; b.textContent = "Modelle laden"; };
+$("#btnLearn").onclick = () => startLearn();
 $("#btnModel").onclick = async () => { const b = $("#btnModel"); b.disabled = true; b.textContent = "Lädt …"; try { S = await api("/api/hand-model"); toast("Handmodell geladen"); render(); } catch (e) { toast(e.message, true); } b.disabled = false; b.textContent = "Handmodell laden"; };
 $("#btnStart").onclick = () => act(() => api("/api/session", { action: S.running ? "stop" : "start" }));
 $("#btnLock").onclick = () => act(async () => {
@@ -462,11 +517,114 @@ $("#swOut").onchange = (e) => setSetting({ output_enabled: e.target.checked });
 $("#swRec").onchange = (e) => setSetting({ record: e.target.checked });
 $("#inHost").onchange = (e) => setSetting({ host: e.target.value.trim() || "127.0.0.1" });
 $("#inPort").onchange = (e) => setSetting({ port: Number(e.target.value) });
+$("#selSpeed").onchange = (e) => setSetting({ speed: e.target.value });
 $("#selPreset").onchange = (e) => setSetting({ preset: e.target.value });
-for (const [id, out, key, f] of [["#slHorizon", "#oHorizon", "horizon_ms", (v) => v + " ms"], ["#slCoast", "#oCoast", "coast_ms", (v) => v + " ms"], ["#slScore", "#oScore", "min_score", (v) => Math.round(v * 100) + " %"]]) {
+for (const [id, out, key, f] of [["#slObj", "#oObj", "obj_score", (v) => Math.round(v * 100) + " %"], ["#slHorizon", "#oHorizon", "horizon_ms", (v) => v + " ms"], ["#slCoast", "#oCoast", "coast_ms", (v) => v + " ms"], ["#slScore", "#oScore", "min_score", (v) => Math.round(v * 100) + " %"]]) {
   $(id).oninput = (e) => ($(out).textContent = f(Number(e.target.value)));
   $(id).onchange = (e) => setSetting({ [key]: Number(e.target.value) });
 }
+
+/* ---------- learned objects: photo -> click -> add -> train ---------- */
+let learn = null;   // {phase: "compose" | "click", pts, labels, img, mask, busy, training, countdown}
+const loadImg = (url) => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("Bild konnte nicht geladen werden")); i.src = url; });
+function nextObjName() { const have = new Set((S.learned || []).map((o) => o.name)); let i = 1; while (have.has("objekt_" + i)) i++; return "objekt_" + i; }
+async function startLearn() {
+  try { await api("/api/learn/reset"); } catch (e) { return toast(e.message, true); }
+  learn = { phase: "compose", pts: [], labels: [], img: null, mask: null, busy: false, training: false, countdown: 0 };
+  $("#lcName").value = nextObjName(); render();
+}
+function endLearn() { if (learn && learn.timer) clearInterval(learn.timer); learn = null; render(); }
+function drawLearn() {
+  if (!learn || !learn.img) return; const c = $("#teachCanvas"), g = c.getContext("2d");
+  g.drawImage(learn.img, 0, 0);
+  if (learn.mask) g.drawImage(learn.mask, 0, 0, c.width, c.height);
+  const r = Math.max(7, c.width / 150);
+  learn.pts.forEach(([x, y], i) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = learn.labels[i] ? "#22c55e" : "#ef4444"; g.fill(); g.lineWidth = r / 3; g.strokeStyle = "#fff"; g.stroke(); });
+}
+async function showPhoto() {
+  learn.img = await loadImg("/api/teach/frame.jpg?t=" + Date.now()); learn.mask = null; learn.pts = []; learn.labels = []; learn.phase = "click";
+  const c = $("#teachCanvas"); c.width = learn.img.naturalWidth; c.height = learn.img.naturalHeight; drawLearn(); render();
+}
+async function learnCapture() { try { await api("/api/teach/freeze"); await showPhoto(); } catch (e) { toast(e.message, true); } }
+function learnCountdown(n) {
+  learn.countdown = n; render();
+  learn.timer = setInterval(() => { learn.countdown--; if (learn.countdown <= 0) { clearInterval(learn.timer); learn.timer = null; learn.countdown = 0; learnCapture(); } render(); }, 1000);
+}
+async function learnClick(e) {
+  if (learn.busy) return; learn.busy = true;
+  const p = canvasPoint(e); learn.pts.push([p.x, p.y]); learn.labels.push(e.button === 2 || e.shiftKey ? 0 : 1); drawLearn();
+  try {
+    await api("/api/learn/segment", { points: learn.pts, labels: learn.labels });
+    learn.mask = await loadImg("/api/learn/mask.png?t=" + Date.now());
+  } catch (err) { toast(err.message, true); learn.pts.pop(); learn.labels.pop(); }
+  learn.busy = false; drawLearn(); renderLearn();
+}
+function renderLearned() {
+  const g = $("#galleryLearned"), list = S.learned || [], key = JSON.stringify([list.map((o) => [o.name, o.version]), S.settings.learned]);
+  if (g.dataset.key === key) return; g.dataset.key = key; g.textContent = "";
+  for (const o of list) {
+    const el = document.createElement("div"); el.className = "tpl"; el.tabIndex = 0; el.setAttribute("role", "radio");
+    el.setAttribute("aria-checked", String(o.name === S.settings.learned)); el.setAttribute("aria-label", o.name);
+    const img = document.createElement("div"); img.className = "img"; const im = document.createElement("img"); im.src = `/api/learned/${o.name}.jpg?v=${o.version}`; im.alt = ""; img.append(im);
+    const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = o.name;
+    const sm = document.createElement("small"); sm.textContent = `${o.images} Fotos`; nm.append(sm); el.append(img, nm);
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "×"; del.title = "Löschen"; del.setAttribute("aria-label", o.name + " löschen");
+    del.onclick = (e) => { e.stopPropagation(); if (confirm(`Gelerntes Objekt „${o.name}“ löschen?`)) act(() => api("/api/learned/delete", { name: o.name })); };
+    el.append(del);
+    const pick = () => setSetting({ learned: o.name, detector: "learned" });
+    el.onclick = pick; el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    g.append(el);
+  }
+  if (!list.length) g.innerHTML = "<p class='note' style='grid-column:1/-1'>Noch kein Objekt gelernt.</p>";
+}
+function renderLearn() {
+  const bar = $("#learnBar"); bar.classList.toggle("show", !!learn);
+  if (!learn) return;
+  const L = S.learn || { count: 0, phase: "idle", progress: 0 }, training = L.phase === "training";
+  if (learn.training && L.phase === "done") { toast("Objekt gelernt – die Erkennung läuft damit"); return endLearn(); }
+  const click = learn.phase === "click";
+  $("#lcCompose").hidden = click; $("#lcClick").hidden = !click; $("#lcNameWrap").hidden = click; $("#lcTrain").hidden = click;
+  $("#learnHint").innerHTML = click
+    ? "<b>Auf das Objekt klicken</b> (linke Maustaste). Zeigt die Maske nur einen Teil: weiter auf den fehlenden Teil klicken. Zu viel erfasst: <b>rechte Maustaste</b> (oder Umschalt+Klick) auf den Überschuss. Dann <b>Foto übernehmen</b>."
+    : `<b>Objekt anlernen:</b> ${S.running ? "Halte das Objekt in die Kamera und nimm ein Foto auf. Wiederhole das mit <b>anderem Abstand und leicht gedrehtem Objekt</b> (ca. 5 Fotos), dann <b>Trainieren</b>." : "Starte links die Kamera (Karte 1) oder lade Fotos aus Dateien."} <b>${L.count}</b> Foto(s) aufgenommen.`;
+  const busyTrain = training || learn.training && L.phase !== "error";
+  $("#lcShot").disabled = !S.running || S.frames === 0 || busyTrain || learn.countdown > 0;
+  $("#lcShot3").disabled = $("#lcShot").disabled; $("#lcFile").disabled = busyTrain || learn.countdown > 0;
+  $("#lcAdd").disabled = !learn.mask || learn.busy;
+  const nameOk = /^[A-Za-z0-9_-]{1,40}$/.test($("#lcName").value.trim());
+  $("#lcTrain").disabled = L.count < 2 || busyTrain || !nameOk;
+  $("#lcTrain").textContent = busyTrain ? "Trainiere …" : `Trainieren (${L.count} Fotos)`;
+  $("#lcCancel").disabled = busyTrain;
+  $("#lcProg").hidden = !busyTrain; $("#lcProg").firstElementChild.style.width = Math.round((L.progress || 0) * 100) + "%";
+  const err = $("#lcErr"); err.hidden = L.phase !== "error"; err.textContent = L.error || "";
+  const th = $("#learnThumbs"), key = "t" + L.count;
+  if (th.dataset.key !== key) {
+    th.dataset.key = key; th.textContent = "";
+    for (let i = 0; i < L.count; i++) {
+      const d = document.createElement("div"); d.className = "thumb"; const im = document.createElement("img"); im.src = `/api/learn/sample/${i}.jpg?c=${L.count}`; im.alt = "Foto " + (i + 1);
+      const x = document.createElement("button"); x.textContent = "×"; x.setAttribute("aria-label", "Foto " + (i + 1) + " entfernen"); x.onclick = () => act(() => api("/api/learn/remove", { index: i }));
+      d.append(im, x); th.append(d);
+    }
+    for (let i = L.count; i < 5; i++) { const d = document.createElement("div"); d.className = "thumb empty"; d.textContent = String(i + 1); th.append(d); }
+  }
+}
+$("#lcShot").onclick = learnCapture;
+$("#lcShot3").onclick = () => learnCountdown(3);
+$("#lcFile").onclick = () => $("#lcFileInput").click();
+$("#lcFileInput").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const r = await fetch("/api/teach/upload", { method: "POST", headers: { "X-Requested-With": "ctrack" }, body: await f.arrayBuffer() });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error); await showPhoto();
+  } catch (err) { toast(err.message, true); }
+};
+$("#lcClear").onclick = () => { learn.pts = []; learn.labels = []; learn.mask = null; drawLearn(); renderLearn(); };
+$("#lcDiscard").onclick = () => { learn.phase = "compose"; learn.img = null; learn.mask = null; render(); };
+$("#lcAdd").onclick = async () => { try { await api("/api/learn/add"); learn.phase = "compose"; learn.img = null; learn.mask = null; poll(); render(); } catch (e) { toast(e.message, true); } };
+$("#lcCancel").onclick = async () => { try { await api("/api/learn/reset"); } catch (e) { /* ignore */ } endLearn(); };
+$("#lcName").oninput = renderLearn;
+$("#lcTrain").onclick = async () => { try { learn.training = true; renderLearn(); await api("/api/learn/train", { name: $("#lcName").value.trim() }); } catch (e) { learn.training = false; toast(e.message, true); renderLearn(); } };
+document.addEventListener("keydown", (e) => { if (learn && e.key === "Escape" && !learn.training) $("#lcCancel").click(); });
 
 /* ---------- teach-in ---------- */
 function nextName() { const have = new Set(S.templates.map((t) => t.name)); let i = 1; while (have.has("teil_" + i)) i++; return "teil_" + i; }
@@ -494,7 +652,8 @@ function canvasPoint(e) {
   return { x: Math.min(Math.max((e.clientX - b.left - ox) / s, 0), c.width), y: Math.min(Math.max((e.clientY - b.top - oy) / s, 0), c.height) };
 }
 const tc = $("#teachCanvas");
-tc.onpointerdown = (e) => { if (!teach) return; tc.setPointerCapture(e.pointerId); teach.drag = canvasPoint(e); teach.roi = null; };
+tc.oncontextmenu = (e) => { if (learn && learn.phase === "click") e.preventDefault(); };
+tc.onpointerdown = (e) => { if (learn && learn.phase === "click") { learnClick(e); return; } if (!teach) return; tc.setPointerCapture(e.pointerId); teach.drag = canvasPoint(e); teach.roi = null; };
 tc.onpointermove = (e) => {
   if (!teach || !teach.drag) return; const p = canvasPoint(e), d = teach.drag;
   teach.roi = { x: Math.min(d.x, p.x), y: Math.min(d.y, p.y), w: Math.abs(p.x - d.x), h: Math.abs(p.y - d.y) }; drawTeach();

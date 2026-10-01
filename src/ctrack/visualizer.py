@@ -63,6 +63,8 @@ class OverlayRenderer:
         img = step.frame.image.copy()
         det = step.detection
         if det is not None:
+            if det.contour is not None:
+                cv2.polylines(img, [np.round(det.contour).astype(np.int32)], True, (210, 190, 40), 2, cv2.LINE_AA)
             if det.keypoints is not None:
                 for x, y in det.keypoints[:, :2]:
                     cv2.circle(img, (round(x), round(y)), 3, (180, 180, 180), -1, cv2.LINE_AA)

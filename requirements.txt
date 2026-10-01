@@ -2,6 +2,7 @@ opencv-python>=4.9
 mediapipe==0.10.21
 numpy>=1.26
 pyyaml>=6
+onnxruntime>=1.17
 # dev / tools
 pytest>=8
 matplotlib>=3.8

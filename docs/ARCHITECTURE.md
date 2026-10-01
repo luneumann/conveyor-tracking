@@ -227,3 +227,57 @@ OpenCV-Fenster mit Tasten (keine Galerie, kein Einlernen per Maus).
   `logs/gui_settings.json`; Senden, Aufnahme und Auto-Lock werden bewusst **nicht** wiederhergestellt.
 - **Eine Sitzung, ein Nutzer:** kein Mehrbenutzerbetrieb, ein Browser-Tab genügt (mehrere sehen denselben Stream).
 - **Aufwand:** MJPEG-Overlay + JPEG ≈ 3 ms pro Frame, beeinflusst die Bildrate nicht messbar.
+
+---
+
+## ADR-011 — Objekt aus ~5 Fotos anlernen: SAM-Klick + DINOv2-Merkmale + linearer Kopf
+
+**Entscheidung:** Der Detektor `learned` findet ein vom Nutzer angelerntes Objekt, das in die Kamera gehalten wird
+(wechselnder Abstand, leichte Drehung). Ablauf:
+1. **Anlernen (Oberfläche):** ~5 Fotos aufnehmen, je **ein Klick** aufs Objekt → MobileSAM liefert die Maske (bei Bedarf
+   weitere Klicks, rechte Maustaste = „gehört nicht dazu“).
+2. **Training (~3 s/Foto):** Pro Foto entstehen ~12 Varianten (Objekt auf 15–80 % des Ausschnitts gezoomt, ±30° gedreht,
+   verschoben, Helligkeit/Kontrast/Unschärfe/Rauschen; 60 % auf Hintergründe der anderen Fotos geklebt). Dazu kommen
+   zufällige **Störformen** (Kreise, Vielecke, Rechtecke in Zufallsfarben) als Gegenbeispiele. Ein eingefrorenes
+   DINOv2-small (14-px-Patches, 384-d) liefert Merkmale; ein klassengewichteter logistischer Kopf (Newton/IRLS in NumPy)
+   lernt „Patch gehört zum Objekt“. Danach **Hard-Negative-Mining** (Hintergrund-Ansichten, die noch als Objekt gelten,
+   werden Negativbeispiele) und Neutraining. Gespeichert wird nur der Kopf (`models/objects/<name>.npz`, wenige KB),
+   dazu das Seitenverhältnis-Band der Masken (×0,7 … ×1,4).
+3. **Erkennen:** Wahrscheinlichkeitskarte → Maske → Schwerpunkt = (x, y), Hauptachse = θ, Kontur fürs Overlay. Im Verfolgen
+   wird nur ein Ausschnitt (1,8 × Objektgröße) um die letzte Position bewertet (Ausschnittskante `view_size`, 140/168/224 px),
+   sonst/bei Unplausiblem das ganze Bild bei 448 px Breite (jeden 3. Frame, solange nichts gefunden wird). Masken mit
+   unplausiblem Seitenverhältnis werden verworfen.
+
+**Begründung:** Vorgabe des Nutzers: wenige Fotos, ein Klick, Objekt „zu variabel“ für Template-Matching (ADR-009) —
+ein Referenzbild trägt weder Abstandsänderung noch Griffwechsel. Ein Kopf auf vortrainierten Merkmalen braucht keine
+Trainingsdaten im Hunderterbereich und trainiert in Sekunden. Alle Komponenten sind Apache-2.0/MIT und laufen mit
+`onnxruntime` auf der CPU.
+
+**Alternativen:** YOLO(-OBB) feinjustieren (braucht Hunderte Bilder; Ultralytics ist AGPL — Lizenzfrage für VMT);
+SAM-2-Videotracking (schwer, kein dauerhaftes Anlernen, kein Wiederfinden); OpenCV-Tracker (finden nichts, nur Box);
+SIFT/ORB-Merkmale (brauchen Textur; dunkle glatte Objekte fallen durch); Farbsegmentierung (nur farbige Objekte).
+
+**Gemessen** (Apple M3, ein Foto-Satz, synthetisch komponiert — *nicht* mit echtem Kamerabild und nicht über mehrere Objekte):
+
+| Messung | Ergebnis |
+|---|---|
+| Position, ganzes Bild (30 Szenen, Größe ×0,4–1,5, Drehung ±25°, Hintergrund mit Hand und Gesicht) | Median 2,5 %, p90 7,0 %, max 8,8 % der Objektgröße; 30/30 gefunden |
+| Winkel | Median 2,7°, p90 8° |
+| Ohne Störformen und Seitenverhältnis (Zwischenstand) | p90 78 %: Verwechslung mit Hintergrund; roter Kreis wurde mit 92 % als Objekt erkannt |
+| Gesamtpfad (Quelle + Erkennung + Tracker + Kalman) | 11 fps „Genau“ (224 px) · 15,5 fps „Ausgewogen“ (168 px) · 19,7 fps „Schnell“ (140 px); Positionsfehler 1,9 / 3,7 / 4,6 px |
+| Backbone allein | 224 px: 62 ms · 168 px: 41 ms · 140 px: 31 ms · ganzes Bild 448×252: 157 ms |
+
+**Grenzen / Entscheidungen:**
+- **Bildrate:** das PRD-Ziel 25 fps wird nicht erreicht (max. ~20 fps). CoreML als ONNX-Provider war langsamer als die CPU.
+  Möglicher Hebel: int8-quantisiertes DINOv2 (24 MB, nicht geladen) oder Erkennung asynchron zur Kamera.
+- **θ nur modulo 180°:** Ein länglicher Körper hat eine Hauptachse ohne Richtung. θ wird gegen den Vorwert entfaltet
+  (keine Sprünge), aber „oben/unten“ ist nicht unterscheidbar.
+- **Objektgröße:** unter ~12 % der Bildbreite (< ~150 px bei 1280 px) werden Treffer unzuverlässig.
+- **Ein Klick reicht oft nicht:** SAM liefert bei einem Klick teils nur einen Teil des Objekts; die Oberfläche zeigt die Maske
+  sofort und lädt zu weiteren Klicks ein.
+- **Hintergrund:** Gegenbeispiele stammen aus den eigenen Fotos. Fotos mit **wechselndem Hintergrund und Griff** anlernen.
+- **Ausprobiert, verworfen:** echte Bildausschnitte (Hand, Gesicht, Raum) als zusätzliche Störobjekte aufs Bild kleben.
+  Auf dem einzigen verfügbaren Foto-Satz wurde die Erkennung dadurch deutlich schlechter (Median 2,5 → 18–30 %, Kreis
+  wieder akzeptiert); Ursache unklar (Teil vermutlich: ausgemalte Objektfläche sieht dem Objekt ähnlich). Mit echten
+  Aufnahmen mehrerer Objekte erneut prüfen.
+- **Download:** MobileSAM (28,2 + 16,5 MB, MIT) und DINOv2-small (88,5 MB, Apache-2.0), Button „Modelle laden“.

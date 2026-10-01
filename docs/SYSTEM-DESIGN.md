@@ -20,7 +20,8 @@ CameraSource ─Frame─▶ Detector ─Detection?─▶ Tracker ──▶ Trans
 | Registry | `src/ctrack/registry.py` | Name → Klasse, `create(cfg)` |
 | Config | `src/ctrack/config.py` | YAML laden, mit Defaults mergen |
 | Kamera | `src/ctrack/camera/` | `WebcamSource`, `VideoFileSource`, `SyntheticConveyorSource`, `Recorder` |
-| Detektor | `src/ctrack/detector/` | `HandDetector` (MediaPipe), `ShapeMatchDetector` (Template, ADR-009), `MarkerBlobDetector` (Synthetik) |
+| Detektor | `src/ctrack/detector/` | `LearnedObjectDetector` (ADR-011), `ShapeMatchDetector` (Template, ADR-009), `HandDetector` (MediaPipe), `NoDetector` (nur Vorschau), `MarkerBlobDetector` (Synthetik) |
+| Lernen | `src/ctrack/objectmodel.py`, `src/ctrack/vision/onnx_models.py` | Augmentierung, Training des Kopfes, Maske→Pose · MobileSAM- und DINOv2-Hüllen |
 | Tracker | `src/ctrack/tracker.py` | Zustandsmaschine, Lock/Reset, Re-Acquire-Gate |
 | Predictor | `src/ctrack/predictor.py` | Kalman (x, y, θ, vx, vy, ω) |
 | Transform | `src/ctrack/transform.py` | `IdentityTransform` (px, image) |
@@ -161,8 +162,15 @@ Alle ändernden Aufrufe: `POST`, JSON, Header `X-Requested-With: ctrack`.
 | GET | `/api/templates/<name>[_mask].png` | Referenzbild bzw. Maske |
 | POST | `/api/templates/delete` | `{"name"}` (Demo-Teil geschützt) |
 | POST | `/api/hand-model` | Handmodell herunterladen |
+| POST | `/api/learn/segment` | `{"points": [[x,y]…], "labels": [1\|0…]}` → SAM-Maske des eingefrorenen Fotos |
+| GET | `/api/learn/mask.png` | Maske als RGBA-Overlay |
+| POST | `/api/learn/add` · `/api/learn/remove` · `/api/learn/reset` | Foto samt Maske übernehmen · entfernen · alles verwerfen |
+| GET | `/api/learn/sample/<i>.jpg` | Vorschaubild eines übernommenen Fotos |
+| POST | `/api/learn/train` | `{"name"}` startet das Training (Hintergrundthread, Fortschritt in `/api/status` → `learn`) |
+| GET | `/api/learned/<name>.jpg` · POST `/api/learned/delete` | Vorschau · Löschen eines gelernten Objekts |
+| POST | `/api/vision-models` | MobileSAM + DINOv2 herunterladen |
 | GET | `/logs/<name>.csv` | Messdaten eines Laufs |
 
 Einstellungen (`Settings` in `engine.py`): `source` (camera/demo/replay), `device`, `recording`,
-`detector` (hand/template), `template`, `preset` (band/hand), `min_score`, `horizon_ms`, `coast_ms`,
+`detector` (learned/template/hand), `template`, `learned`, `preset` (band/hand), `min_score`, `obj_score`, `speed` (fast/balanced/precise), `horizon_ms`, `coast_ms`,
 `auto_lock`, `output_enabled`, `host`, `port`, `record`.

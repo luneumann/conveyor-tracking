@@ -62,6 +62,7 @@ class Detection:
     theta: float
     confidence: float
     keypoints: np.ndarray | None = field(default=None, compare=False)
+    contour: np.ndarray | None = field(default=None, compare=False)  # (n, 2) outline in frame pixels, for the overlay
 
     @property
     def pose(self) -> Pose:
