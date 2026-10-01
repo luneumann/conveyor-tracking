@@ -50,15 +50,31 @@ Die Kamera muss das Fenster "probe" sehen — eine Laptop-Webcam sieht den eigen
 Spiegel davor halten oder eine externe Webcam auf den Laptop-Bildschirm richten. Den ausgegebenen
 Wert in `config/default.yaml` → `camera.exposure_offset_ms` eintragen.
 
-### 5. Filter tunen (nach dem ersten Live-Lauf)
+### 5. Filter-Tuning (erledigt für die Hand, Bestätigung steht aus)
 
-`process_noise: 50` aus dem PRD ist für eine Hand eher träge (Konstant-Geschwindigkeits-Modell,
-Einheit px²/s³, siehe ADR-005). Wenn das gestrichelte Kreuz bei Richtungswechseln deutlich
-hinterherläuft: aufnehmen und per Replay vergleichen:
+`process_noise: 50` aus dem PRD ist für eine Hand viel zu träge: Im ersten Live-Lauf (19 s getrackt)
+war die 100-ms-Prädiktion damit **schlechter als gar keine Prädiktion** (p95 97 px = 7,6 % der Breite
+gegenüber 39 px, wenn man die letzte Pose einfach hält). Offline über die geloggten Detektionen
+nachgerechnet (Einheit px²/s³, Messrauschen 4 px):
+
+| process_noise | p95 Fehler | % Bildbreite |
+|---|---|---|
+| 50 (PRD) | 97,5 px | 7,61 % |
+| 5 000 | 35,9 px | 2,81 % |
+| 100 000 | 20,0 px | 1,57 % |
+| **300 000** (jetzt Default) | 16,7 px | 1,31 % |
+| 10 000 000 | 18,3 px | 1,43 % |
+
+Plateau zwischen 1e5 und 1e6, daher 3e5. `config/default.yaml` und `config/replay.yaml` sind angepasst;
+`config/synthetic.yaml` bleibt bei 50 (konstante Bandgeschwindigkeit). Einschränkungen: **ein Lauf**
+mit frei bewegter Hand, nicht der PRD-Messung "gleichmäßig in eine Richtung" — die steht noch aus.
+Hohes Rauschen macht außerdem die Geschwindigkeitsschätzung im Stream unruhiger (noch nicht gemessen).
+
+Selbst nachtunen mit Aufnahme und Replay:
 
 ```bash
 python -m ctrack --record recordings/demo                      # Hand bewegen, Q
-for q in 50 500 5000; do
+for q in 5000 50000 300000; do
   python -m ctrack -c config/replay.yaml --headless --auto-lock \
     -s camera.path=recordings/demo.mp4 -s predictor.process_noise=$q -s metrics.csv=logs/q$q.csv
   python tools/analyze.py logs/q$q.csv | grep "pred err"
