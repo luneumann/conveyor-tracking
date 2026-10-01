@@ -36,18 +36,22 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return out
 
 
+def _apply(cfg: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
+    # A different module type must not inherit the previous type's kwargs (e.g. webcam 'device').
+    cfg = copy.deepcopy(cfg)
+    for section, block in user.items():
+        if isinstance(block, dict) and "type" in block and block["type"] != cfg.get(section, {}).get("type"):
+            cfg[section] = {}
+    return deep_merge(cfg, user)
+
+
 def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg = copy.deepcopy(DEFAULTS)
     if path is not None:
         with open(path) as f:
-            user = yaml.safe_load(f) or {}
-        # A different camera/detector type should not inherit the default type's kwargs.
-        for section in ("camera", "detector", "transform", "output"):
-            if section in user and user[section].get("type", cfg[section]["type"]) != cfg[section]["type"]:
-                cfg[section] = {}
-        cfg = deep_merge(cfg, user)
+            cfg = _apply(cfg, yaml.safe_load(f) or {})
     if overrides:
-        cfg = deep_merge(cfg, overrides)
+        cfg = _apply(cfg, overrides)
     return cfg
 
 

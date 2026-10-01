@@ -31,7 +31,7 @@ def _dashed_line(img: np.ndarray, p0: tuple[float, float], p1: tuple[float, floa
         cv2.line(img, q0, q1, color, thickness, cv2.LINE_AA)
 
 
-def draw_axes(img: np.ndarray, pose: Pose, length: float = 60.0, dashed: bool = False,
+def draw_axes(img: np.ndarray, pose: Pose, length: float = 90.0, dashed: bool = False,
               color: tuple[int, int, int] | None = None) -> None:
     c, s = math.cos(pose.theta), math.sin(pose.theta)
     o = (pose.x, pose.y)
@@ -41,9 +41,12 @@ def draw_axes(img: np.ndarray, pose: Pose, length: float = 60.0, dashed: bool = 
         _dashed_line(img, o, x_end, color or X_COLOR)
         _dashed_line(img, o, y_end, color or Y_COLOR)
     else:
-        cv2.arrowedLine(img, (round(o[0]), round(o[1])), (round(x_end[0]), round(x_end[1])),
-                        color or X_COLOR, 3, cv2.LINE_AA, tipLength=0.2)
-        cv2.line(img, (round(o[0]), round(o[1])), (round(y_end[0]), round(y_end[1])), color or Y_COLOR, 3, cv2.LINE_AA)
+        po, px, py = (round(o[0]), round(o[1])), (round(x_end[0]), round(x_end[1])), (round(y_end[0]), round(y_end[1]))
+        # Dark outline first so the axes stay visible on any background.
+        cv2.arrowedLine(img, po, px, (0, 0, 0), 7, cv2.LINE_AA, tipLength=0.2)
+        cv2.line(img, po, py, (0, 0, 0), 7, cv2.LINE_AA)
+        cv2.arrowedLine(img, po, px, color or X_COLOR, 3, cv2.LINE_AA, tipLength=0.2)
+        cv2.line(img, po, py, color or Y_COLOR, 3, cv2.LINE_AA)
     cv2.circle(img, (round(o[0]), round(o[1])), 4, color or (255, 255, 255), -1, cv2.LINE_AA)
 
 

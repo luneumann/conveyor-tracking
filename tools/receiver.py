@@ -78,6 +78,10 @@ class StreamStats:
                 f"p95 {self.latency_p(95):5.1f} ms  {pose_s} [{m.get('unit', '')}]")
 
 
+def _raise_interrupt(*_: object) -> None:
+    raise KeyboardInterrupt
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", default="0.0.0.0")
@@ -85,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--raw", action="store_true", help="print every message as JSON")
     args = p.parse_args(argv)
     # Print the summary on `kill` too, not only on Ctrl+C.
-    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))
+    signal.signal(signal.SIGTERM, _raise_interrupt)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((args.host, args.port))
