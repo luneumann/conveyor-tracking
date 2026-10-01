@@ -20,7 +20,7 @@ CameraSource ─Frame─▶ Detector ─Detection?─▶ Tracker ──▶ Trans
 | Registry | `src/ctrack/registry.py` | Name → Klasse, `create(cfg)` |
 | Config | `src/ctrack/config.py` | YAML laden, mit Defaults mergen |
 | Kamera | `src/ctrack/camera/` | `WebcamSource`, `VideoFileSource`, `SyntheticConveyorSource`, `Recorder` |
-| Detektor | `src/ctrack/detector/` | `HandDetector` (MediaPipe), `MarkerBlobDetector` (Synthetik) |
+| Detektor | `src/ctrack/detector/` | `HandDetector` (MediaPipe), `ShapeMatchDetector` (Template, ADR-009), `MarkerBlobDetector` (Synthetik) |
 | Tracker | `src/ctrack/tracker.py` | Zustandsmaschine, Lock/Reset, Re-Acquire-Gate |
 | Predictor | `src/ctrack/predictor.py` | Kalman (x, y, θ, vx, vy, ω) |
 | Transform | `src/ctrack/transform.py` | `IdentityTransform` (px, image) |
@@ -29,7 +29,7 @@ CameraSource ─Frame─▶ Detector ─Detection?─▶ Tracker ──▶ Trans
 | Metriken | `src/ctrack/metrics.py` | CSV, Prädiktionsfehler-Matching, Live-Perzentile |
 | Visualizer | `src/ctrack/visualizer.py` | Overlay + Tastatur |
 | Einstieg | `src/ctrack/main.py` | CLI, Loop, Tasten `L`/`R`/`Q` |
-| Tools | `tools/` | `receiver.py`, `analyze.py`, `latency_probe.py`, `fetch_model.py` |
+| Tools | `tools/` | `receiver.py`, `analyze.py`, `latency_probe.py`, `fetch_model.py`, `check_hand.py`, `teach.py` |
 
 ## 2. Datenmodell
 
@@ -92,6 +92,12 @@ Siehe `config/default.yaml` (PRD 5.5) und `config/synthetic.yaml`. Ergänzungen 
 |---|---|---|
 | `detector.model_path` | `models/hand_landmarker.task` | MediaPipe-Modell (ADR-003) |
 | `tracker.reacquire_growth_px_s` | 600 | Wachstum des Re-Acquire-Gates in LOST |
+| `detector.template` / `mask` | – | Referenzbild bzw. Maske für `shape_match` (`tools/teach.py`) |
+| `detector.min_score` | 0.85 | Mindest-Korrelation (`shape_match`) |
+| `detector.downscale` | 4 | Verkleinerung der globalen Suche (8 = ~2× schneller, kleinere Teile gehen verloren) |
+| `detector.angle_step_deg` / `fine_step_deg` | 6 / 2 | Winkelraster Grob-/Feinstufe |
+| `detector.local_margin_px` / `local_angle_range_deg` | 100 / 18 | Suchfenster um die letzte Pose |
+| `detector.global_interval` | 3 | Globale Suche bei fehlendem Teil nur jeden n-ten Frame |
 | `predictor.process_noise_theta` | 2.0 | ADR-005 |
 | `predictor.measurement_noise_theta` | 0.05 | ADR-005 |
 | `output.include_predicted` | true | P1-4 |

@@ -1,0 +1,17 @@
+# Synthetic conveyor + template matching (no camera): exercises the shape_match detector end to end.
+camera:
+  type: synthetic
+  width: 1280
+  height: 720
+  fps: 30
+  velocity: [250.0, 15.0]
+  omega: 0.3
+  start: [100.0, 300.0, 0.0]
+  image_noise: 6.0
+  realtime: true
+detector:  { type: shape_match, template: templates/synthetic_part.png, min_score: 0.85, downscale: 8 }
+tracker:   { coast_ms: 300, reacquire_radius_px: 80, reacquire_growth_px_s: 600 }
+predictor: { process_noise: 50.0, measurement_noise: 1.0, horizon_ms: 100 }
+transform: { type: identity }
+output:    { type: udp, host: 127.0.0.1, port: 5005, rate_hz: 0 }
+metrics:   { csv: logs/synthetic_shape.csv }

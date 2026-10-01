@@ -81,7 +81,24 @@ for q in 5000 50000 300000; do
 done
 ```
 
-### 6. Git-Remote (optional)
+### 6. Bauteil per Referenzbild einlernen (Template-Matching)
+
+```bash
+python tools/teach.py --camera 0 --out templates/part.png --mask-auto
+python -m ctrack -c config/shape_match.yaml
+```
+
+- **Nullstellung:** Das Teil so hinlegen, wie θ = 0 gelten soll. Die Orientierung im Referenzbild ist
+  die Null, die Mitte des ausgeschnittenen Rechtecks der Pose-Ursprung.
+- **ROI:** eng um das Teil ziehen. `--mask-auto` schreibt `templates/part_mask.png` (nur Teilfläche zählt);
+  Maske ansehen und in `config/shape_match.yaml` bei `detector.mask` eintragen.
+- **Voraussetzungen:** feste Kamerahöhe (kein Maßstabs-Suchlauf; ±10 % Größe = Pixelfehler, ±20 % = nicht
+  gefunden), Teil mit asymmetrischem Merkmal (sonst θ nur modulo Symmetrie), mindestens ~70 % sichtbar.
+- **Tuning:** `min_score` (0.85) senken, wenn das Teil nicht gefunden wird; `downscale: 8` beschleunigt die
+  globale Suche, verliert aber kleine Teile. Das Kalman-`process_noise` in `shape_match.yaml` steht auf
+  50 (Band-Bewegung); bei von Hand geführtem Teil auf ~300000 erhöhen (siehe Schritt 5).
+
+### 7. Git-Remote (optional)
 
 Das Repo ist lokal initialisiert (Branch `main`), hat aber **keinen Remote** — ich habe kein
 GitHub-Repo ohne Rückfrage angelegt. Falls gewünscht:
@@ -128,6 +145,10 @@ gh repo create conveyor-tracking --private --source=. --remote=origin --push
   Schwerpunkt (Ground-Truth-Fehler bis ~20 px nur dort; innen ~0,05 px). Betrifft nur die Synthetik.
 - **Latenz bei Replay** misst nur die Verarbeitungszeit (`t_sent − t_read`), weil `t_exposure`
   aus der Aufnahme stammt (ADR-007).
+- **Template-Matching nur synthetisch geprüft.** Genauigkeit 0,1 px / 0,09° und alle Tests beziehen sich
+  auf ein gerendertes Teil. Mit einem echten Bauteil (Spiegelungen, Schatten, Perspektive) ist noch nichts
+  gemessen. Grenzen (Maßstab, Verdeckung) in ADR-009.
+- **Globale Suche ist langsam** (≈ 250 ms bei 1280×720): nach einem Verlust sinkt die Bildrate kurz.
 - **Single-Thread:** Falls Webcam + MediaPipe < 25 fps, Kamera-Grab in eigenen Thread auslagern.
 
 ## Kosten-Übersicht

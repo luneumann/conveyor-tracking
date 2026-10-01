@@ -1,0 +1,12 @@
+# Template matching on a taught reference (P2-6). Teach first: python tools/teach.py --camera 0 --out templates/part.png
+camera:    { type: webcam, device: 0, width: 1280, height: 720, exposure_offset_ms: 30 }
+detector:
+  type: shape_match
+  template: templates/part.png
+  # mask: templates/part_mask.png       # optional, from teach.py --mask-auto
+  min_score: 0.85
+tracker:   { coast_ms: 300, reacquire_radius_px: 80, reacquire_growth_px_s: 600 }
+predictor: { process_noise: 50.0, measurement_noise: 1.0, horizon_ms: 100 }   # belt-like motion; raise for hand-held parts
+transform: { type: identity }
+output:    { type: udp, host: 127.0.0.1, port: 5005, rate_hz: 0, include_predicted: true }
+metrics:   { csv: logs/shape_match.csv }

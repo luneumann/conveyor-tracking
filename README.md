@@ -10,7 +10,7 @@ latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Ro
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                                              # 56 Tests, ohne Kamera
+pytest                                              # 78 Tests, ohne Kamera
 
 # Ohne Kamera: synthetisches Band mit Ground Truth
 python -m ctrack -c config/synthetic.yaml --auto-lock
@@ -25,6 +25,11 @@ python tools/receiver.py
 
 # Auswertung
 python tools/analyze.py logs/run.csv
+
+# Pose eines echten Teils per Referenzbild (Template-Matching)
+python tools/teach.py --camera 0 --out templates/part.png --mask-auto   # Teil in Nullstellung zeigen, SPACE, ROI ziehen
+python -m ctrack -c config/shape_match.yaml
+python -m ctrack -c config/synthetic_shape.yaml --auto-lock             # dasselbe ohne Kamera
 ```
 
 ## CLI
@@ -55,10 +60,11 @@ python -m ctrack [-c CONFIG] [-s section.key=value ...] [--headless] [--auto-loc
 ## Projektstruktur
 
 ```
-config/          default.yaml (Webcam+Hand), synthetic.yaml, replay.yaml
+config/          default.yaml (Webcam+Hand), shape_match.yaml, synthetic*.yaml, replay.yaml
+templates/       eingelernte Referenzbilder
 src/ctrack/      types, registry, config, pipeline, tracker, predictor, transform,
                  metrics, visualizer, main; camera/, detector/, publisher/
-tools/           receiver.py, analyze.py, latency_probe.py, fetch_model.py
+tools/           receiver.py, analyze.py, latency_probe.py, fetch_model.py, check_hand.py, teach.py
 tests/           pytest
 docs/            PRD, ARCHITECTURE (ADRs), SYSTEM-DESIGN, TESTING, DEMO-HANDOFF, DEMO-CHECKLIST
 ```

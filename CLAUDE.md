@@ -31,6 +31,8 @@ CameraSource → Detector → Tracker (State Machine + Predictor/Kalman) → Tra
 source .venv/bin/activate
 python -m ctrack --config config/default.yaml          # Live-Demo (Webcam + Hand)
 python -m ctrack --config config/synthetic.yaml        # Synthetisches Band, keine Kamera nötig
+python tools/teach.py --camera 0 --out templates/part.png --mask-auto   # Referenz einlernen
+python -m ctrack --config config/shape_match.yaml      # Pose per Template-Matching
 python tools/receiver.py --port 5005                   # Referenz-Empfänger
 python tools/analyze.py logs/run.csv                   # Auswerte-Plots
 pytest                                                 # Tests

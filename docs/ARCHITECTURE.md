@@ -156,3 +156,39 @@ reproduzierbar — Grundlage für End-to-End-Tests und Filter-Tuning gegen Groun
 nicht); ArUco-Marker rendern (wäre Stufe 2 vorweggenommen — bleibt P2-2).
 
 **Konsequenzen:** Der Blob-Detektor ist nur für die Synthetik gedacht, nicht für echte Szenen.
+
+---
+
+## ADR-009 — Pose aus Referenzbild: maskiertes Template-Matching über alle Drehwinkel
+
+**Entscheidung:** `ShapeMatchDetector` (`detector/shape_match.py`) lernt ein Referenzbild ein
+(`tools/teach.py`, optional mit Maske). Orientierung im Referenzbild = θ 0, Template-Mitte
+((w−1)/2, (h−1)/2, Pixelzentrum-Koordinaten) = Pose-Ursprung. Gesucht wird per
+`cv2.matchTemplate(TM_CCOEFF_NORMED, mask)` über alle Winkel in drei Stufen: Grobsuche im verkleinerten
+Bild, Feinstufe in voller Auflösung, danach Parabel-Fit über Position und Winkel (Sub-Pixel,
+Sub-Grad). Im laufenden Betrieb wird nur lokal um die letzte Pose gesucht (±`local_margin_px`,
+±`local_angle_range_deg`); die globale Suche läuft beim Start und nach Verlust, bei fehlendem Teil
+nur jeden `global_interval`-ten Frame.
+
+**Begründung:** Projektentscheidung für Stufe 2c: ein echtes Bauteil ohne Marker, eingelernt aus einem
+Referenzmerkmal. Die Normierung (CCOEFF_NORMED) macht das Verfahren unempfindlich gegen Helligkeit und
+Kontrast. Alle 360° im Suchraum lösen die 180°-Mehrdeutigkeit, solange das Teil asymmetrische Merkmale hat.
+
+**Alternativen:** Halcon-artiges kantenbasiertes / CAD-basiertes Matching (robuster gegen Verdeckung und
+Maßstab, aber kommerziell bzw. eigener Aufwand — später als weiterer Detektor hinter derselben
+Schnittstelle möglich); ArUco (Marker nötig); Momente/Hauptachse (180°-mehrdeutig); gelerntes Netz
+(Trainingsdaten).
+
+**Konsequenzen / gemessene Grenzen** (synthetisches Teil, `tests/test_shape_match.py` + Einmalmessung):
+
+| Bedingung | Ergebnis |
+|---|---|
+| sauber / Helligkeit ×0,5 / +60 / Kontrast ×0,6 | 0,2 px, 0,08° |
+| Unschärfe σ 8 px, Rauschen σ 50 | Score ≥ 0,90, Fehler < 0,3 px |
+| Maßstab ±10 % | Score ≈ 0,8, aber **4,8 px Fehler** (stille Fehlmessung) |
+| Maßstab ±20 % | nicht gefunden |
+| ≥ 30 % verdeckt | nicht gefunden (Tracker läuft per Prädiktion weiter) |
+
+Es gibt keine Maßstabssuche: feste Kamerahöhe und gleichartige Teile sind Voraussetzung.
+`min_score` (Default 0.85) ist deshalb bewusst hoch — lieber kein Treffer als eine um Pixel falsche Pose.
+Laufzeit auf M3, 1280×720: lokal ≈ 25 ms, global ≈ 250 ms (`downscale: 4`) bzw. ≈ 115 ms (`downscale: 8`).

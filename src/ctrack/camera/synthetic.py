@@ -71,7 +71,13 @@ class SyntheticConveyorSource(CameraSource):
     def read(self) -> Frame | None:
         if self.max_frames is not None and self._frame_id >= self.max_frames:
             return None
-        t_rel = self._frame_id / self.fps + (self.rng.normal(0, self.jitter_s) if self.jitter_s else 0.0)
+        index = self._frame_id
+        if self.realtime:
+            # Like a camera with a one-frame buffer: if the consumer is slow, stale frames are dropped
+            # (frame_id jumps) instead of queueing up, so latency stays bounded.
+            index = max(index, int((time.time() - self._t0) * self.fps))
+            self._frame_id = index
+        t_rel = index / self.fps + (self.rng.normal(0, self.jitter_s) if self.jitter_s else 0.0)
         if self.realtime:
             delay = self._t0 + t_rel - time.time()
             if delay > 0:
@@ -81,8 +87,9 @@ class SyntheticConveyorSource(CameraSource):
         image = np.full((h, w, 3), 35, dtype=np.uint8)
         render_object(image, pose, *self.object_size)
         if self.image_noise:
-            noise = self.rng.normal(0, self.image_noise, image.shape)
-            image = np.clip(image.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+            # One noise plane shared by the colour channels: 3x cheaper than per-channel noise.
+            noise = self.rng.normal(0, self.image_noise, (h, w)).astype(np.float32)
+            image = np.clip(image + noise[..., None], 0, 255).astype(np.uint8)
         frame = Frame(image=image, t_exposure=self._t0 + t_rel, frame_id=self._frame_id, ground_truth=pose)
         self._frame_id += 1
         return frame
