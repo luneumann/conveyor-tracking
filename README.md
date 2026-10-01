@@ -3,36 +3,34 @@
 Kameragestützter "virtueller Encoder": ein Objekt einlocken, seine Pose (x, y, θ) verfolgen,
 latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Roboter senden.
 
-**Stack:** Python 3.11 · OpenCV · MediaPipe Tasks (Hand) · NumPy (Kalman) · YAML-Config · UDP/JSON
+**Stack:** Python 3.11 · OpenCV · MediaPipe Tasks (Hand) · NumPy (Kalman) · lokale Web-GUI (stdlib) · YAML-Config · UDP/JSON
 
-## Schnellstart
+## Schnellstart (ohne Terminal)
+
+**Doppelklick auf `Conveyor Tracking starten.command`.** Beim ersten Mal richtet es die Umgebung ein, danach
+öffnet sich im Browser die Oberfläche (`http://127.0.0.1:8765`):
+
+1. **Quelle** wählen: *Kamera*, *Demo-Band* (simuliert, ohne Kamera) oder *Aufnahme* → **Starten**.
+2. **Erkennung** wählen: *Bauteil (Referenzbild)* oder *Hand*.
+   Neues Teil: Teil in Nullstellung zeigen → **Aus Livebild einlernen** → Rechteck eng ums Teil ziehen →
+   Namen vergeben → **Speichern**.
+3. **Tracking starten** (oder „Automatisch einlocken“). Kennzahlen (Bildrate, Latenz, Vorhersagefehler)
+   erscheinen live mit Zielwerten.
+4. Optional: **Pose per UDP senden**, **Video aufzeichnen**, Feineinstellungen.
+
+Alles Weitere steht in `SETUP.md`. Für Entwickler gibt es zusätzlich die Kommandozeile:
 
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                                              # 78 Tests, ohne Kamera
-
-# Ohne Kamera: synthetisches Band mit Ground Truth
-python -m ctrack -c config/synthetic.yaml --auto-lock
-
-# Live mit Webcam + Hand (Modell einmalig laden)
-python tools/fetch_model.py
-python tools/check_hand.py                          # Modell + MediaPipe ok?
-python -m ctrack                                    # Hand zeigen, L drücken
-
-# Zweites Terminal: Stream empfangen
-python tools/receiver.py
-
-# Auswertung
-python tools/analyze.py logs/run.csv
-
-# Pose eines echten Teils per Referenzbild (Template-Matching)
-python tools/teach.py --camera 0 --out templates/part.png --mask-auto   # Teil in Nullstellung zeigen, SPACE, ROI ziehen
-python -m ctrack -c config/shape_match.yaml
-python -m ctrack -c config/synthetic_shape.yaml --auto-lock             # dasselbe ohne Kamera
+pytest                                              # 92 Tests, ohne Kamera
+python -m ctrack.gui                                # Web-Oberfläche (wie der Doppelklick)
+python -m ctrack -c config/synthetic.yaml --auto-lock   # OpenCV-Fenster statt Web-GUI
+python tools/receiver.py                            # Stream-Empfänger (zweites Terminal)
+python tools/analyze.py logs/run.csv                # Auswertung mit Plots
 ```
 
-## CLI
+## Kommandozeile (CLI)
 
 ```
 python -m ctrack [-c CONFIG] [-s section.key=value ...] [--headless] [--auto-lock]
@@ -63,7 +61,7 @@ python -m ctrack [-c CONFIG] [-s section.key=value ...] [--headless] [--auto-loc
 config/          default.yaml (Webcam+Hand), shape_match.yaml, synthetic*.yaml, replay.yaml
 templates/       eingelernte Referenzbilder
 src/ctrack/      types, registry, config, pipeline, tracker, predictor, transform,
-                 metrics, visualizer, main; camera/, detector/, publisher/
+                 metrics, visualizer, teach, models, main; camera/, detector/, publisher/, gui/
 tools/           receiver.py, analyze.py, latency_probe.py, fetch_model.py, check_hand.py, teach.py
 tests/           pytest
 docs/            PRD, ARCHITECTURE (ADRs), SYSTEM-DESIGN, TESTING, DEMO-HANDOFF, DEMO-CHECKLIST

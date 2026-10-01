@@ -31,6 +31,16 @@ class Tracker:
         self.t_lost = None
         self.predictor.reset()
 
+    def auto_lock_step(self, now: float, relock_after_s: float = 1.0, immediate: bool = False) -> None:
+        """Auto-lock policy: lock on the first detection; after LOST for > relock_after_s (or at once
+        for non-live sources) drop the target and lock the next object."""
+        if self.state is TrackState.SEARCHING:
+            self.request_lock()
+        elif self.state is TrackState.LOST and self.t_lost is not None:
+            if immediate or now - self.t_lost > relock_after_s:
+                self.reset()
+                self.request_lock()
+
     def reference_pose(self, t: float) -> Pose | None:
         """Where we expect the target; extrapolation is capped at coast_ms after the last sighting."""
         if not self.predictor.initialized or self.t_last_seen is None:

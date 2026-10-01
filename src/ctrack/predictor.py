@@ -26,6 +26,16 @@ class KalmanPredictor:
         self.P = np.eye(6)
         self.t: float | None = None
 
+    def configure(self, process_noise: float | None = None, measurement_noise: float | None = None,
+                  horizon_ms: float | None = None) -> None:
+        """Change noise parameters on a running filter (state is kept)."""
+        if process_noise is not None:
+            self.q[:2] = process_noise
+        if measurement_noise is not None:
+            self.R[0, 0] = self.R[1, 1] = measurement_noise**2
+        if horizon_ms is not None:
+            self.horizon_s = horizon_ms / 1000.0
+
     @property
     def initialized(self) -> bool:
         return self.t is not None

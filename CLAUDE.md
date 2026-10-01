@@ -21,7 +21,8 @@ CameraSource → Detector → Tracker (State Machine + Predictor/Kalman) → Tra
 - Zeitstempel immer `time.time()`-Sekunden (float, Epoch); `Frame.t_exposure` ist Pflichtfeld
 - Winkel in Radiant, normiert auf (−π, π] über `ctrack.types.wrap_angle`
 - Kernlogik (`pipeline.py` und alles darunter) darf **nicht** `cv2.imshow`/UI importieren — der
-  Visualizer ist optional (P2-8)
+  Visualizer ist optional (P2-8); die Web-GUI (`ctrack/gui/`) sitzt außerhalb des Kerns (ADR-010)
+- GUI: HTTP-Handler dürfen Tracker/Filter nie direkt anfassen — nur Einstellungen setzen oder `Engine.command()`
 - Neue Module: Klasse mit `@REGISTRY.register("name")` dekorieren und im `__init__.py` des
   Pakets importieren
 
@@ -29,6 +30,7 @@ CameraSource → Detector → Tracker (State Machine + Predictor/Kalman) → Tra
 
 ```bash
 source .venv/bin/activate
+python -m ctrack.gui                                   # Web-Oberfläche (Doppelklick: Conveyor Tracking starten.command)
 python -m ctrack --config config/default.yaml          # Live-Demo (Webcam + Hand)
 python -m ctrack --config config/synthetic.yaml        # Synthetisches Band, keine Kamera nötig
 python tools/teach.py --camera 0 --out templates/part.png --mask-auto   # Referenz einlernen

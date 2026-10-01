@@ -1,7 +1,37 @@
-# Demo-Handoff — Visualizer und Live-Demo (G4)
+# Demo-Handoff — Oberfläche und Live-Demo (G4)
 
-Es gibt keine GUI im Produktsinn (PRD 3: "Produktionsreife (… GUI)" ist Nicht-Ziel). Dieses Dokument
-beschreibt das Overlay-Fenster und den Demo-Ablauf für Engineering/BD.
+## Web-Oberfläche (Standard)
+
+Start per Doppelklick auf `Conveyor Tracking starten.command`. Links Live-Bild mit Overlay und Kennzahlen,
+rechts die Bedienung in der Reihenfolge des Ablaufs:
+
+| Karte | Inhalt |
+|---|---|
+| 1 Quelle | Kamera (Auswahl 0–3) · Demo-Band · Aufnahme · **Starten / Stoppen** |
+| 2 Erkennung | Bauteil (Galerie der Referenzbilder, Auswahl per Klick, × löscht, **Aus Livebild einlernen**, **Bild laden …**) · Hand |
+| 3 Tracking | **Tracking starten** (wartet auf Objekt) / **zurücksetzen** · Schalter „Automatisch einlocken“ |
+| Ausgabe & Aufnahme | UDP-Senden mit Adresse/Port und Paketzähler · Video aufzeichnen |
+| Feineinstellungen | Bewegungsprofil (Band/Hand) · Vorhersage-Horizont · Überbrückung bei Verdeckung · Mindest-Übereinstimmung |
+| Letzter Lauf | Zusammenfassung und CSV-Download |
+
+**Zustandsanzeige** (oben rechts und im Video): grau *Suche Objekt* · grün *Verfolge* · orange *Verdeckt –
+Vorhersage* · rot *Verloren* (roter Kreis = Suchbereich für die Wiederaufnahme, wächst mit der Zeit).
+
+**Kennzahlen-Kacheln** färben sich grün/rot gegen die PRD-Ziele: Bildrate ≥ 25 fps, Latenz p95 < 100 ms,
+Vorhersagefehler p95 < 2 % der Bildbreite.
+
+**Einlernen:** Bild friert ein → Rechteck ziehen (Mittelpunkt-Kreuz = Bezugspunkt, roter Strich = Richtung
+θ = 0) → Name → *Speichern*. „Maske automatisch“ lässt den Hintergrund im Rechteck außen vor. Das neue
+Referenzbild ist sofort aktiv; Enter speichert, Esc bricht ab.
+
+Die folgenden Abschnitte beschreiben das OpenCV-Fenster der Kommandozeile (`python -m ctrack`).
+
+---
+
+## OpenCV-Fenster (CLI)
+
+Die Web-Oberfläche ist ein Bedienpanel für den Prototyp, keine produktionsreife GUI (PRD 3, Nicht-Ziel).
+Dieses Dokument beschreibt außerdem das Overlay-Fenster der Kommandozeile und den Demo-Ablauf für Engineering/BD.
 
 ## Fenster `ctrack`
 

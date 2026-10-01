@@ -26,6 +26,7 @@ pytest            # alle Tests, ~8 s, ohne Kamera und ohne MediaPipe-Modell
 | P0-9 Paketverlust aus `seq`-Lücken | `test_receiver_counts_seq_gaps` |
 | P0-10 Modultausch ohne Änderung am Kern | `test_new_detector_needs_only_class_and_registry_entry` |
 | P1-1 Replay reproduziert Zeitstempel | `test_record_and_replay_reproduce_timestamps` |
+| GUI: Sicherheit (Host-/Header-Prüfung, Pfadangriffe), Einstellungen, Demo-Sitzung mit Einlocken, MJPEG-Stream, UDP-Ausgabe, Einlernen/Löschen, Keep-Alive-Regression | `tests/test_gui.py` |
 | P2-6 Pose aus Referenzbild (θ über ±π, 180°-Mehrdeutigkeit, Verlust/Rückkehr, Template-Parität) | `tests/test_shape_match.py` |
 | Erfolgsmetrik Prädiktionsfehler p95 < 2 % | `test_prediction_error_meets_prd_goal` (synthetisch) |
 
@@ -41,7 +42,7 @@ pytest            # alle Tests, ~8 s, ohne Kamera und ohne MediaPipe-Modell
 |---|---|---|
 | `WebcamSource` | Braucht Kamera + macOS-Berechtigung | Demo-Checkliste, Schritt "Kamera" |
 | `HandDetector` (MediaPipe-Inferenz) | Braucht Modelldatei und echte Handbilder; Detektionsrate ≥ 90 % ist eine Feldmessung | Pose-Mathematik ist unit-getestet; Rate über `logs/run.csv` (Anteil Zeilen mit `det_x`) |
-| `Visualizer` | UI, visuelle Prüfung | Demo |
+| `Visualizer` und das Aussehen der Web-Seite (Layout, Rechteck-Ziehen mit der Maus) | Visuell/Interaktion; die API dahinter ist getestet. Einmalig im Browser mit dem Demo-Band durchgeklickt | Demo |
 | `shape_match` mit echtem Bauteil | Braucht Kamera + Teil; Tests nutzen ein synthetisches Teil. Maßstab-/Verdeckungsgrenzen (ADR-009) sind eine Einmalmessung, kein Test | Mit echtem Teil einlernen und `analyze.py` auswerten |
 | `tools/latency_probe.py` | Braucht Kamera, die den Bildschirm sieht | Manuell, Ergebnis in Config übernehmen |
 | Latenz p95 < 100 ms, fps ≥ 25 mit Webcam | Hardwareabhängig | `tools/analyze.py logs/run.csv` nach Demo-Lauf |

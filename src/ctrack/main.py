@@ -61,12 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         while args.max_frames is None or n < args.max_frames:
             if args.auto_lock:
-                if tracker.state is TrackState.SEARCHING:
-                    tracker.request_lock()
-                elif tracker.state is TrackState.LOST and tracker.t_lost is not None:
-                    if time.time() - tracker.t_lost > AUTO_RELOCK_S or not pipeline.camera.is_live:
-                        tracker.reset()
-                        tracker.request_lock()
+                tracker.auto_lock_step(time.time(), AUTO_RELOCK_S, immediate=not pipeline.camera.is_live)
             step = pipeline.step()
             if step is None:
                 break

@@ -50,12 +50,13 @@ def draw_axes(img: np.ndarray, pose: Pose, length: float = 90.0, dashed: bool = 
     cv2.circle(img, (round(o[0]), round(o[1])), 4, color or (255, 255, 255), -1, cv2.LINE_AA)
 
 
-class Visualizer:
-    def __init__(self, window: str = "ctrack", horizon_ms: float = 100.0, reacquire_radius_px: float = 80.0) -> None:
-        self.window = window
+class OverlayRenderer:
+    """Draws the overlay onto a copy of the frame. No window, usable headless (e.g. by the web GUI)."""
+
+    def __init__(self, horizon_ms: float = 100.0, reacquire_radius_px: float = 80.0, hud: bool = True) -> None:
         self.horizon_ms = horizon_ms
         self.reacquire_radius = reacquire_radius_px
-        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+        self.hud = hud  # the web GUI shows these numbers itself
 
     def render(self, step: StepResult, stats: dict[str, float], reference: Pose | None = None,
                gate_radius: float | None = None) -> np.ndarray:
@@ -74,7 +75,8 @@ class Visualizer:
             draw_axes(img, step.pose)
         if step.predicted is not None:
             draw_axes(img, step.predicted, dashed=True, color=PRED_COLOR)
-        self._hud(img, step, stats)
+        if self.hud:
+            self._hud(img, step, stats)
         return img
 
     def _hud(self, img: np.ndarray, step: StepResult, stats: dict[str, float]) -> None:
@@ -102,6 +104,16 @@ class Visualizer:
             y += h
             cv2.putText(img, text, (pad, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2 if scale > 0.6 else 1,
                         cv2.LINE_AA)
+
+
+
+class Visualizer(OverlayRenderer):
+    """OpenCV window with keyboard handling."""
+
+    def __init__(self, window: str = "ctrack", horizon_ms: float = 100.0, reacquire_radius_px: float = 80.0) -> None:
+        super().__init__(horizon_ms, reacquire_radius_px)
+        self.window = window
+        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
 
     def show(self, step: StepResult, stats: dict[str, float], reference: Pose | None = None,
              gate_radius: float | None = None) -> str | None:

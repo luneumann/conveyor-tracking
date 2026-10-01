@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conveyor Tracking</title>
+<style>
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --surface-2: #eef1f4; --text: #14202b; --muted: #5b6b7a;
+  --border: #d8dee5; --accent: #0f766e; --accent-hover: #0b5e58; --on-accent: #ffffff;
+  --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --idle: #64748b; --stage: #0b0f14;
+  --focus: #2563eb; --shadow: 0 1px 2px rgba(15, 23, 42, .06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e141a; --surface: #161e26; --surface-2: #1d2731; --text: #e6edf3; --muted: #93a4b5;
+    --border: #2a3744; --accent: #2dd4bf; --accent-hover: #5eead4; --on-accent: #06201d;
+    --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --idle: #94a3b8; --stage: #05080b;
+    --focus: #60a5fa; --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+.logo { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
+.logo svg { width: 18px; height: 18px; stroke: var(--on-accent); }
+header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .1px; }
+.spacer { flex: 1; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
+  background: var(--surface-2); border: 1px solid var(--border); font-weight: 600; font-size: 14px; }
+.pill .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
+.pill[data-state="TRACKING"] .dot { background: var(--ok); }
+.pill[data-state="COASTING"] .dot { background: var(--warn); }
+.pill[data-state="LOST"] .dot { background: var(--bad); }
+.pill[data-state="SEARCHING"] .dot { background: var(--muted); }
+.pill[data-live="1"][data-state="TRACKING"] .dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .pill .dot { animation: none !important; } }
+
+main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; padding: 18px 20px 40px;
+  max-width: 1500px; margin: 0 auto; }
+@media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); padding: 14px 16px 40px; } }
+
+.banner { padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; display: none;
+  border: 1px solid var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--surface)); }
+.banner.show { display: block; }
+.banner.warn { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
+.banner b { font-weight: 650; }
+
+.stage { position: relative; aspect-ratio: 16 / 9; background: var(--stage); border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--border); }
+.stage img#stream, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage canvas { cursor: crosshair; touch-action: none; }
+.placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px;
+  color: #aab6c2; }
+.placeholder .big { font-size: 18px; font-weight: 600; color: #e6edf3; margin-bottom: 6px; }
+.placeholder svg { width: 44px; height: 44px; stroke: #6b7c8c; margin-bottom: 10px; }
+.chip { position: absolute; left: 12px; bottom: 12px; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
+  background: rgba(8, 12, 16, .78); color: #fff; display: none; backdrop-filter: blur(4px); }
+.chip.show { display: block; }
+
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; box-shadow: var(--shadow); }
+.tile .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
+.tile .goal { font-size: 12px; color: var(--muted); }
+.tile.ok .v { color: var(--ok); } .tile.bad .v { color: var(--bad); }
+.tile .goal::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+  background: var(--border); }
+.tile.ok .goal::before { background: var(--ok); } .tile.bad .goal::before { background: var(--bad); }
+
+.teachbar { display: none; margin-top: 12px; background: var(--surface); border: 1px solid var(--accent);
+  border-radius: 12px; padding: 14px; gap: 12px; flex-wrap: wrap; align-items: end; }
+.teachbar.show { display: flex; }
+.teachbar .hint { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 14px; }
+.teachbar .hint b { color: var(--text); }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 12px; color: var(--muted); }
+.field input[type=text], .field input[type=number], select {
+  height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
+select { padding-right: 8px; }
+
+aside { display: flex; flex-direction: column; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+.card h2 { margin: 0 0 12px; font-size: 13px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .6px;
+  display: flex; align-items: center; gap: 8px; }
+.card h2 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--accent); color: var(--on-accent); font-size: 12px; letter-spacing: 0; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.row + .row, .row + .note, .seg + .row, .seg + .note, .note + .row { margin-top: 10px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.note.bad { color: var(--bad); }
+
+.btn { height: 42px; padding: 0 16px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface);
+  font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn.danger { border-color: var(--bad); color: var(--bad); }
+.btn.danger:hover:not(:disabled) { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); }
+.btn.block { width: 100%; height: 48px; font-size: 16px; }
+.btn.small { height: 34px; padding: 0 12px; font-size: 14px; }
+
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { height: 36px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-weight: 600; color: var(--muted); }
+.seg button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
+
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 10px; }
+.tpl { position: relative; border: 2px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 0; cursor: pointer; overflow: hidden; text-align: left; }
+.tpl[aria-checked="true"] { border-color: var(--accent); }
+.tpl .img { height: 62px; background: repeating-conic-gradient(#8883 0 25%, transparent 0 50%) 0 0 / 14px 14px; display: grid; place-items: center; }
+.tpl img { max-width: 100%; max-height: 62px; object-fit: contain; }
+.tpl .nm { padding: 4px 8px 6px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tpl .nm small { display: block; font-weight: 400; color: var(--muted); }
+.tpl .del { position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgba(8, 12, 16, .7);
+  color: #fff; cursor: pointer; display: none; line-height: 1; font-size: 15px; }
+.tpl:hover .del, .tpl:focus-within .del { display: block; }
+
+.switch { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; }
+.switch .track { width: 42px; height: 24px; border-radius: 999px; background: var(--border); position: relative; flex: none; transition: background .15s; }
+.switch .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(18px); }
+.switch input:focus-visible + .track { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled + .track { opacity: .45; }
+.switch .lbl b { display: block; font-weight: 600; }
+.switch .lbl span { font-size: 13px; color: var(--muted); }
+
+.slider { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+.slider + .slider { margin-top: 12px; }
+.slider label { font-size: 14px; font-weight: 600; }
+.slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 14px; }
+.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.slider .note { grid-column: 1 / -1; }
+
+details summary { cursor: pointer; font-weight: 600; font-size: 14px; color: var(--muted); }
+details[open] summary { margin-bottom: 8px; }
+details ol { margin: 6px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; }
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 14px; }
+dl.kv dt { color: var(--muted); } dl.kv dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+a { color: var(--accent); }
+
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none;
+  background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 10px; font-weight: 600; transition: all .2s; z-index: 20; max-width: 90vw; }
+#toast.show { opacity: 1; transform: translateX(-50%); }
+#toast.err { background: var(--bad); color: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17h18"/><path d="M7 17V9h6v8"/><path d="M16 9l3 3"/><circle cx="7" cy="19" r="1"/><circle cx="17" cy="19" r="1"/></svg></div>
+  <h1>Conveyor Tracking</h1>
+  <div class="spacer"></div>
+  <div class="pill" id="statePill" data-state="IDLE" role="status" aria-live="polite"><span class="dot"></span><span id="stateLabel">Bereit</span></div>
+</header>
+
+<main>
+  <section aria-label="Live-Ansicht">
+    <div class="banner" id="errBanner" role="alert"></div>
+    <div class="banner warn" id="connBanner">Verbindung zum Programm getrennt – läuft es noch? (Start-Fenster prüfen)</div>
+
+    <div class="stage" id="stage">
+      <img id="stream" alt="Live-Bild mit Tracking-Overlay" hidden>
+      <canvas id="teachCanvas" hidden aria-label="Bild zum Einlernen: Rechteck um das Teil ziehen"></canvas>
+      <div class="placeholder" id="placeholder">
+        <div>
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+          <div class="big" id="phTitle">Kamera ist aus</div>
+          <div id="phText">Quelle wählen und auf „Starten“ drücken.</div>
+        </div>
+      </div>
+      <div class="chip" id="chip"></div>
+    </div>
+
+    <div class="teachbar" id="teachBar">
+      <p class="hint"><b>Teil einlernen:</b> Ziehe ein Rechteck <b>eng um das Teil</b> (Teil in der gewünschten Nullstellung). Die Mitte des Rechtecks ist der Bezugspunkt, die Ausrichtung im Bild ist 0°.</p>
+      <div class="field"><label for="tplName">Name</label><input type="text" id="tplName" maxlength="40" autocomplete="off" spellcheck="false"></div>
+      <label class="switch"><input type="checkbox" id="maskAuto" checked><span class="track"></span><span class="lbl"><b>Maske automatisch</b><span>nur die Teilfläche zählt</span></span></label>
+      <div class="spacer"></div>
+      <span class="note" id="roiInfo">Noch kein Rechteck</span>
+      <button class="btn" id="teachCancel">Abbrechen</button>
+      <button class="btn primary" id="teachSave" disabled>Speichern</button>
+    </div>
+
+    <div class="metrics" id="metrics">
+      <div class="tile" id="tFps"><div class="k">Bildrate</div><div class="v" id="vFps">–</div><div class="goal">Ziel ≥ 25 fps</div></div>
+      <div class="tile" id="tLat"><div class="k">Latenz (p95)</div><div class="v" id="vLat">–</div><div class="goal">Ziel &lt; 100 ms</div></div>
+      <div class="tile" id="tErr"><div class="k">Vorhersagefehler (p95)</div><div class="v" id="vErr">–</div><div class="goal">Ziel &lt; 2 % der Breite</div></div>
+      <div class="tile"><div class="k">Geschwindigkeit</div><div class="v" id="vSpeed">–</div><div class="goal" style="--x:0">&nbsp;</div></div>
+      <div class="tile"><div class="k">Pose (x · y · θ)</div><div class="v" id="vPose" style="font-size:18px;padding-top:4px">–</div><div class="goal">Pixel, Grad</div></div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2><span class="n">1</span>Quelle</h2>
+      <div class="seg" role="radiogroup" aria-label="Quelle" id="segSource">
+        <button role="radio" data-v="camera">Kamera</button>
+        <button role="radio" data-v="demo">Demo-Band</button>
+        <button role="radio" data-v="replay">Aufnahme</button>
+      </div>
+      <div class="row" id="rowCamera"><div class="field"><label for="selDevice">Kamera</label>
+        <select id="selDevice"><option value="0">Kamera 0 (Standard)</option><option value="1">Kamera 1</option><option value="2">Kamera 2</option><option value="3">Kamera 3</option></select></div></div>
+      <div class="row" id="rowReplay"><div class="field"><label for="selRec">Aufnahme</label><select id="selRec"></select></div></div>
+      <p class="note" id="noteDemo">Simuliertes Band mit Teil – funktioniert ohne Kamera (Erkennung „Bauteil“ mit dem Demo-Teil).</p>
+      <div class="row" style="margin-top:14px"><button class="btn primary block" id="btnStart">Starten</button></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">2</span>Erkennung</h2>
+      <div class="seg" role="radiogroup" aria-label="Erkennung" id="segDetector">
+        <button role="radio" data-v="template">Bauteil (Referenzbild)</button>
+        <button role="radio" data-v="hand">Hand</button>
+      </div>
+      <p class="note" id="noteHand">Handerkennung (MediaPipe). Zum Testen ohne Bauteil.</p>
+      <div id="noteNoModel"><p class="note bad">Das Handmodell (7,8 MB, von Google) fehlt noch.</p>
+        <div class="row"><button class="btn small" id="btnModel">Handmodell laden</button></div></div>
+      <div id="tplSection">
+        <div class="gallery" id="gallery" role="radiogroup" aria-label="Referenzbilder"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn small" id="btnTeachLive">Aus Livebild einlernen</button>
+          <button class="btn small" id="btnTeachFile">Bild laden …</button>
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+        <details style="margin-top:12px"><summary>So lernst du ein Teil ein</summary>
+          <ol><li>Teil in der gewünschten <b>Nullstellung</b> vor die Kamera legen.</li>
+          <li>Kamera starten, <b>Aus Livebild einlernen</b> drücken (das Bild friert ein).</li>
+          <li>Rechteck <b>eng um das Teil</b> ziehen, Namen eingeben, speichern.</li>
+          <li>Das neue Referenzbild ist sofort ausgewählt.</li></ol>
+          <p class="note" style="margin-top:8px">Voraussetzungen: gleichbleibender Abstand Kamera–Teil (±10 % Größe verfälscht die Pose), ein asymmetrisches Merkmal am Teil, mindestens ~70 % sichtbar.</p>
+        </details>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="n">3</span>Tracking</h2>
+      <button class="btn primary block" id="btnLock">Tracking starten</button>
+      <p class="note" id="noteDet" style="margin-top:10px">–</p>
+      <label class="switch" style="margin-top:12px"><input type="checkbox" id="swAuto"><span class="track"></span><span class="lbl"><b>Automatisch einlocken</b><span>Erstes erkanntes Objekt verfolgen, nach Verlust das nächste</span></span></label>
+    </div>
+
+    <div class="card">
+      <h2>Ausgabe &amp; Aufnahme</h2>
+      <label class="switch"><input type="checkbox" id="swOut"><span class="track"></span><span class="lbl"><b>Pose per UDP senden</b><span id="outInfo">An Roboter / Empfänger</span></span></label>
+      <div class="row">
+        <div class="field"><label for="inHost">Adresse</label><input type="text" id="inHost" value="127.0.0.1" style="width:150px" spellcheck="false"></div>
+        <div class="field"><label for="inPort">Port</label><input type="number" id="inPort" value="5005" min="1" max="65535" style="width:100px"></div>
+      </div>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" id="swRec"><span class="track"></span><span class="lbl"><b>Video aufzeichnen</b><span>Speichert in „recordings“, später als Quelle „Aufnahme“ abspielbar</span></span></label>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>Feineinstellungen</summary>
+        <div class="field" style="margin-bottom:14px"><label for="selPreset">Bewegung</label>
+          <select id="selPreset"><option value="band">Band (gleichmäßig, ruhig)</option><option value="hand">Hand (schnell, ruckelig)</option></select></div>
+        <div class="slider"><label for="slHorizon">Vorhersage-Horizont</label><output id="oHorizon"></output><input type="range" id="slHorizon" min="0" max="300" step="10"></div>
+        <div class="slider"><label for="slCoast">Überbrückung bei Verdeckung</label><output id="oCoast"></output><input type="range" id="slCoast" min="100" max="1000" step="50"></div>
+        <div class="slider" id="sliderScore"><label for="slScore">Mindest-Übereinstimmung</label><output id="oScore"></output><input type="range" id="slScore" min="0.5" max="0.99" step="0.01">
+          <p class="note">Höher = strenger (weniger Fehlmessungen), niedriger = findet verdeckte Teile eher.</p></div>
+      </details>
+    </div>
+
+    <div class="card" id="cardLast" hidden>
+      <h2>Letzter Lauf</h2>
+      <dl class="kv" id="lastRun"></dl>
+      <p class="note" style="margin-top:10px"><a id="csvLink" href="#" download>Messdaten (CSV) herunterladen</a></p>
+    </div>
+  </aside>
+</main>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const STATE_LABEL = { IDLE: "Bereit", SEARCHING: "Suche Objekt", TRACKING: "Verfolge", COASTING: "Verdeckt – Vorhersage", LOST: "Verloren" };
+let S = null;                // last status snapshot
+let streamSession = null;    // session id the <img> stream belongs to
+let teach = null;            // {img, roi, drag}
+
+/* ---------- helpers ---------- */
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "X-Requested-With": "ctrack", "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+function toast(msg, err) {
+  const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : "");
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.className = ""), err ? 5000 : 2600);
+}
+async function act(fn) { try { const d = await fn(); if (d && d.settings) { S = d; render(); } } catch (e) { toast(e.message, true); } }
+const setSetting = (obj) => act(() => api("/api/settings", obj));
+const fmt = (v, d = 0) => (v === null || v === undefined || Number.isNaN(v) ? "–" : v.toFixed(d));
+const idle = (el) => document.activeElement !== el;
+
+/* ---------- rendering ---------- */
+function render() {
+  if (!S) return;
+  const st = S.settings, running = S.running, teaching = !!teach;
+  const state = running ? S.state : "IDLE";
+
+  // header pill
+  const pill = $("#statePill"); pill.dataset.state = running ? state : "IDLE"; pill.dataset.live = running ? "1" : "0";
+  $("#stateLabel").textContent = S.starting ? "Starte …" : (running && state === "SEARCHING" && S.lock_pending ? "Warte auf Objekt" : STATE_LABEL[running ? state : "IDLE"]);
+
+  // errors
+  const eb = $("#errBanner");
+  if (S.error) {
+    let hint = "";
+    if (/webcam|Cannot open|camera/i.test(S.error)) hint = " <br>Kamera-Zugriff erlauben: <b>Systemeinstellungen → Datenschutz &amp; Sicherheit → Kamera</b> → die App aktivieren, mit der du dieses Programm gestartet hast (z. B. Terminal), und neu starten.";
+    eb.innerHTML = "<b>Fehler:</b> " + S.error.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])) + hint;
+    eb.classList.add("show");
+  } else eb.classList.remove("show");
+
+  // stage: stream / placeholder / teach canvas
+  const showStream = running && !teaching && !S.starting;
+  $("#stream").hidden = !(showStream || (running && !teaching && S.session));
+  $("#teachCanvas").hidden = !teaching;
+  const ph = $("#placeholder");
+  ph.hidden = teaching || (running && S.frames > 0);
+  if (!running) { $("#phTitle").textContent = S.error ? "Konnte nicht starten" : "Kamera ist aus"; $("#phText").textContent = S.error ? "Siehe Meldung oben." : "Quelle wählen und auf „Starten“ drücken."; }
+  else { $("#phTitle").textContent = "Starte …"; $("#phText").textContent = st.detector === "template" ? "Kamera wird geöffnet, Referenzbild geladen." : "Kamera und Handmodell werden geladen."; }
+  if (running && S.session && streamSession !== S.session) {
+    streamSession = S.session; const img = $("#stream"); img.src = "/stream.mjpg?s=" + S.session;
+  }
+  if (!running) streamSession = null;
+  const chip = $("#chip");
+  const chipText = running && !teaching ? (state === "SEARCHING" && S.lock_pending ? "Warte auf Objekt im Bild …" : (state === "LOST" ? "Verloren – Objekt zurück ins Bild bringen" : "")) : "";
+  chip.textContent = chipText; chip.classList.toggle("show", !!chipText);
+
+  // card 1: source
+  setSeg("#segSource", st.source);
+  $("#rowCamera").hidden = st.source !== "camera";
+  $("#rowReplay").hidden = st.source !== "replay";
+  $("#noteDemo").hidden = st.source !== "demo";
+  if (idle($("#selDevice"))) $("#selDevice").value = String(st.device);
+  const sr = $("#selRec");
+  if (idle(sr)) {
+    const want = JSON.stringify(S.recordings);
+    if (sr.dataset.list !== want) { sr.dataset.list = want; sr.innerHTML = S.recordings.length ? S.recordings.map((n) => `<option>${n}</option>`).join("") : "<option value=''>Keine Aufnahmen vorhanden</option>"; }
+    if (S.recordings.includes(st.recording)) sr.value = st.recording;
+    else if (S.recordings.length && sr.value && sr.value !== st.recording) setSetting({ recording: sr.value });
+  }
+  const b = $("#btnStart");
+  b.textContent = S.starting ? "Starte …" : running ? "Stoppen" : "Starten";
+  b.className = "btn block " + (running ? "danger" : "primary"); b.disabled = !!S.starting || teaching;
+
+  // card 2: detector
+  setSeg("#segDetector", st.detector);
+  const isTpl = st.detector === "template";
+  $("#tplSection").hidden = !isTpl;
+  $("#noteHand").hidden = isTpl;
+  $("#noteNoModel").hidden = isTpl || S.hand_model;
+  renderGallery();
+  $("#btnTeachLive").disabled = !running || teaching || S.frames === 0;
+  $("#btnTeachFile").disabled = teaching;
+
+  // card 3: tracking
+  const lock = $("#btnLock");
+  const tracking = running && state !== "SEARCHING";
+  lock.disabled = !running || teaching;
+  if (tracking) { lock.textContent = "Tracking zurücksetzen"; lock.className = "btn block"; }
+  else if (running && S.lock_pending) { lock.textContent = "Warte auf Objekt … (abbrechen)"; lock.className = "btn block"; }
+  else { lock.textContent = "Tracking starten"; lock.className = "btn primary block"; }
+  $("#noteDet").textContent = !running ? "Zuerst die Kamera starten." :
+    S.detected ? `Objekt erkannt${S.score != null ? " (Übereinstimmung " + Math.round(S.score * 100) + " %)" : ""}.` : "Kein Objekt im Bild erkannt.";
+  if (idle($("#swAuto"))) $("#swAuto").checked = st.auto_lock;
+
+  // output / record
+  if (idle($("#swOut"))) $("#swOut").checked = st.output_enabled;
+  if (idle($("#inHost"))) $("#inHost").value = st.host;
+  if (idle($("#inPort"))) $("#inPort").value = st.port;
+  $("#outInfo").textContent = st.output_enabled && running ? `${S.packets_sent} Pakete → ${st.host}:${st.port}` : st.output_enabled ? "Sendet, sobald die Kamera läuft" : "An Roboter / Empfänger";
+  if (idle($("#swRec"))) $("#swRec").checked = st.record;
+
+  // fine settings
+  if (idle($("#selPreset"))) $("#selPreset").value = st.preset;
+  setSlider("#slHorizon", "#oHorizon", st.horizon_ms, (v) => v + " ms");
+  setSlider("#slCoast", "#oCoast", st.coast_ms, (v) => v + " ms");
+  setSlider("#slScore", "#oScore", st.min_score, (v) => Math.round(v * 100) + " %");
+  $("#sliderScore").hidden = !isTpl;
+
+  // metrics
+  $("#vFps").innerHTML = running ? fmt(S.fps, 1) + " <small>fps</small>" : "–";
+  tile("#tFps", running && S.fps != null ? S.fps >= 25 : null);
+  $("#vLat").innerHTML = running && S.latency_p95 != null ? fmt(S.latency_p95) + " <small>ms</small>" : "–";
+  tile("#tLat", running && S.latency_p95 != null ? S.latency_p95 < 100 : null);
+  $("#vErr").innerHTML = running && S.pred_err_pct != null ? fmt(S.pred_err_pct, 2) + " <small>%</small>" : "–";
+  tile("#tErr", running && S.pred_err_pct != null ? S.pred_err_pct < 2 : null);
+  $("#vSpeed").innerHTML = S.velocity ? fmt(S.velocity.speed) + " <small>px/s</small>" : "–";
+  $("#vPose").textContent = S.pose ? `${fmt(S.pose.x)} · ${fmt(S.pose.y)} · ${fmt(S.pose.theta_deg, 1)}°` : "–";
+
+  // last run
+  const lr = S.last_run;
+  $("#cardLast").hidden = !lr || running;
+  if (lr && !running) {
+    $("#lastRun").innerHTML = [["Bilder", lr.frames], ["Bildrate", fmt(lr.fps, 1) + " fps"], ["Latenz p95", fmt(lr.latency_p95) + " ms"],
+      ["Vorhersagefehler p95", lr.pred_err_p95_pct == null ? "–" : `${fmt(lr.pred_err_p95, 1)} px (${fmt(lr.pred_err_p95_pct, 2)} %)`]]
+      .map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+    if (lr.csv) $("#csvLink").href = "/logs/" + encodeURIComponent(lr.csv);
+  }
+}
+function setSeg(sel, value) { document.querySelectorAll(sel + " button").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.v === value))); }
+function setSlider(sel, outSel, value, f) { const el = $(sel); if (idle(el)) el.value = value; $(outSel).textContent = f(Number(el.value)); }
+function tile(sel, ok) { const t = $(sel); t.classList.toggle("ok", ok === true); t.classList.toggle("bad", ok === false); }
+function renderGallery() {
+  const g = $("#gallery"), key = JSON.stringify([S.templates.map((t) => [t.name, t.version]), S.settings.template]);
+  if (g.dataset.key === key) return; g.dataset.key = key; g.textContent = "";
+  for (const t of S.templates) {
+    const el = document.createElement("div"); el.className = "tpl"; el.tabIndex = 0; el.setAttribute("role", "radio");
+    el.setAttribute("aria-checked", String(t.name === S.settings.template)); el.setAttribute("aria-label", t.name);
+    const img = document.createElement("div"); img.className = "img"; const im = document.createElement("img");
+    im.src = `/api/templates/${t.name}.png?v=${t.version}`; im.alt = ""; img.append(im);
+    const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = t.name;
+    const sm = document.createElement("small"); sm.textContent = `${t.width}×${t.height}${t.has_mask ? " · Maske" : ""}${t.builtin ? " · Demo" : ""}`; nm.append(sm);
+    el.append(img, nm);
+    if (!t.builtin) {
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "×"; del.title = "Löschen"; del.setAttribute("aria-label", t.name + " löschen");
+      del.onclick = (e) => { e.stopPropagation(); if (confirm(`Referenzbild „${t.name}“ löschen?`)) act(() => api("/api/templates/delete", { name: t.name })); };
+      el.append(del);
+    }
+    const pick = () => setSetting({ template: t.name, detector: "template" });
+    el.onclick = pick; el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } };
+    g.append(el);
+  }
+  if (!S.templates.length) g.innerHTML = "<p class='note'>Noch keine Referenzbilder.</p>";
+}
+
+/* ---------- polling ---------- */
+async function poll() {
+  try {
+    const r = await fetch("/api/status", { cache: "no-store" });
+    S = await r.json(); $("#connBanner").classList.remove("show"); render();
+  } catch { $("#connBanner").classList.add("show"); }
+}
+setInterval(poll, 300); poll();
+
+/* ---------- controls ---------- */
+document.querySelectorAll("#segSource button").forEach((b) => (b.onclick = () => setSetting({ source: b.dataset.v })));
+document.querySelectorAll("#segDetector button").forEach((b) => (b.onclick = () => setSetting({ detector: b.dataset.v })));
+$("#selDevice").onchange = (e) => setSetting({ device: Number(e.target.value) });
+$("#selRec").onchange = (e) => setSetting({ recording: e.target.value });
+$("#btnModel").onclick = async () => { const b = $("#btnModel"); b.disabled = true; b.textContent = "Lädt …"; try { S = await api("/api/hand-model"); toast("Handmodell geladen"); render(); } catch (e) { toast(e.message, true); } b.disabled = false; b.textContent = "Handmodell laden"; };
+$("#btnStart").onclick = () => act(() => api("/api/session", { action: S.running ? "stop" : "start" }));
+$("#btnLock").onclick = () => act(async () => {
+  const tracking = S.running && S.state !== "SEARCHING";
+  await api("/api/command", { name: tracking || S.lock_pending ? "reset" : "lock" });
+});
+$("#swAuto").onchange = (e) => setSetting({ auto_lock: e.target.checked });
+$("#swOut").onchange = (e) => setSetting({ output_enabled: e.target.checked });
+$("#swRec").onchange = (e) => setSetting({ record: e.target.checked });
+$("#inHost").onchange = (e) => setSetting({ host: e.target.value.trim() || "127.0.0.1" });
+$("#inPort").onchange = (e) => setSetting({ port: Number(e.target.value) });
+$("#selPreset").onchange = (e) => setSetting({ preset: e.target.value });
+for (const [id, out, key, f] of [["#slHorizon", "#oHorizon", "horizon_ms", (v) => v + " ms"], ["#slCoast", "#oCoast", "coast_ms", (v) => v + " ms"], ["#slScore", "#oScore", "min_score", (v) => Math.round(v * 100) + " %"]]) {
+  $(id).oninput = (e) => ($(out).textContent = f(Number(e.target.value)));
+  $(id).onchange = (e) => setSetting({ [key]: Number(e.target.value) });
+}
+
+/* ---------- teach-in ---------- */
+function nextName() { const have = new Set(S.templates.map((t) => t.name)); let i = 1; while (have.has("teil_" + i)) i++; return "teil_" + i; }
+function openTeach(img) {
+  const c = $("#teachCanvas"); c.width = img.naturalWidth; c.height = img.naturalHeight;
+  teach = { img, roi: null, drag: null };
+  $("#teachBar").classList.add("show"); $("#tplName").value = nextName(); $("#roiInfo").textContent = "Noch kein Rechteck"; $("#teachSave").disabled = true;
+  drawTeach(); render(); $("#tplName").select();
+}
+function closeTeach() { teach = null; $("#teachBar").classList.remove("show"); render(); }
+function drawTeach() {
+  if (!teach) return; const c = $("#teachCanvas"), g = c.getContext("2d"), r = teach.roi;
+  g.drawImage(teach.img, 0, 0);
+  if (!r) return;
+  g.save(); g.fillStyle = "rgba(0,0,0,.55)"; g.beginPath(); g.rect(0, 0, c.width, c.height); g.rect(r.x, r.y, r.w, r.h); g.fill("evenodd"); g.restore();
+  const lw = Math.max(2, c.width / 480);
+  g.lineWidth = lw; g.strokeStyle = "#2dd4bf"; g.setLineDash([lw * 4, lw * 3]); g.strokeRect(r.x, r.y, r.w, r.h); g.setLineDash([]);
+  g.strokeStyle = "#2dd4bf"; const cx = r.x + r.w / 2, cy = r.y + r.h / 2, a = lw * 6;       // pose origin = centre
+  g.beginPath(); g.moveTo(cx - a, cy); g.lineTo(cx + a, cy); g.moveTo(cx, cy - a); g.lineTo(cx, cy + a); g.stroke();
+  g.strokeStyle = "#f87171"; g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + a * 3, cy); g.stroke();   // theta = 0 direction
+}
+function canvasPoint(e) {
+  const c = $("#teachCanvas"), b = c.getBoundingClientRect(), s = Math.min(b.width / c.width, b.height / c.height);
+  const ox = (b.width - c.width * s) / 2, oy = (b.height - c.height * s) / 2;
+  return { x: Math.min(Math.max((e.clientX - b.left - ox) / s, 0), c.width), y: Math.min(Math.max((e.clientY - b.top - oy) / s, 0), c.height) };
+}
+const tc = $("#teachCanvas");
+tc.onpointerdown = (e) => { if (!teach) return; tc.setPointerCapture(e.pointerId); teach.drag = canvasPoint(e); teach.roi = null; };
+tc.onpointermove = (e) => {
+  if (!teach || !teach.drag) return; const p = canvasPoint(e), d = teach.drag;
+  teach.roi = { x: Math.min(d.x, p.x), y: Math.min(d.y, p.y), w: Math.abs(p.x - d.x), h: Math.abs(p.y - d.y) }; drawTeach();
+  $("#roiInfo").textContent = `${Math.round(teach.roi.w)} × ${Math.round(teach.roi.h)} px`;
+};
+tc.onpointerup = () => { if (!teach) return; teach.drag = null; $("#teachSave").disabled = !(teach.roi && teach.roi.w >= 16 && teach.roi.h >= 16); };
+$("#teachCancel").onclick = closeTeach;
+$("#teachSave").onclick = async () => {
+  const r = teach.roi, name = $("#tplName").value.trim();
+  try {
+    const d = await api("/api/teach/save", { name, roi: [r.x, r.y, r.w, r.h], mask_auto: $("#maskAuto").checked });
+    closeTeach(); toast(`„${d.name}“ gespeichert und ausgewählt (${d.width}×${d.height}${d.mask_coverage != null ? ", Maske " + Math.round(d.mask_coverage * 100) + " %" : ""})`); poll();
+  } catch (e) { toast(e.message, true); }
+};
+document.addEventListener("keydown", (e) => { if (!teach) return; if (e.key === "Escape") closeTeach(); if (e.key === "Enter" && !$("#teachSave").disabled) $("#teachSave").click(); });
+function loadTeachImage() {
+  const img = new Image(); img.onload = () => openTeach(img); img.onerror = () => toast("Bild konnte nicht geladen werden", true);
+  img.src = "/api/teach/frame.jpg?t=" + Date.now();
+}
+$("#btnTeachLive").onclick = async () => { try { await api("/api/teach/freeze"); loadTeachImage(); } catch (e) { toast(e.message, true); } };
+$("#btnTeachFile").onclick = () => $("#fileInput").click();
+$("#fileInput").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const r = await fetch("/api/teach/upload", { method: "POST", headers: { "X-Requested-With": "ctrack" }, body: await f.arrayBuffer() });
+    const d = await r.json(); if (!r.ok) throw new Error(d.error); loadTeachImage();
+  } catch (err) { toast(err.message, true); }
+};
+</script>
+</body>
+</html>

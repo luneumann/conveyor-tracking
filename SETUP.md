@@ -1,44 +1,62 @@
 # Setup — Was du selbst tun musst
 
-Der Code ist fertig und getestet (56 Tests grün, synthetische Pipeline läuft). Die folgenden Schritte
+Der Code ist fertig und getestet (92 Tests grün, synthetische Pipeline und Web-Oberfläche laufen). Die folgenden Schritte
 brauchen dich, weil sie Kamera, Downloads oder Entscheidungen betreffen.
 
-## Vor dem ersten Start
+## Erster Start (alles per Klick)
 
-### 1. Python-Umgebung
+### 1. Programm starten
 
-Bereits erledigt in `.venv/` (Python 3.11). Auf einem anderen Rechner:
+**Doppelklick auf `Conveyor Tracking starten.command`** (im Projektordner). Es öffnet ein Terminal-Fenster
+(das offen bleiben muss, solange du arbeitest) und danach den Browser mit der Oberfläche
+(`http://127.0.0.1:8765`). Beim allerersten Mal richtet es die Python-Umgebung selbst ein (einige Minuten).
 
-```bash
-cd ~/Projects/Tracking
-python3.11 -m venv .venv          # 3.11 oder 3.12 — MediaPipe hat keine Wheels für 3.13+
-source .venv/bin/activate
-pip install -e ".[dev]"
-pytest
-```
+- Meldet macOS „nicht geöffnet werden, da der Entwickler nicht verifiziert ist“: Rechtsklick auf die Datei →
+  **Öffnen** → **Öffnen**. Das ist nur beim ersten Mal nötig.
+- Beenden: Terminal-Fenster schließen (oder Ctrl+C).
 
-### 2. MediaPipe-Handmodell laden (~7,5 MB, einmalig)
+### 2. Kamera-Berechtigung (macOS)
 
-```bash
-python tools/fetch_model.py
-```
+Beim ersten **Starten** mit Quelle *Kamera* fragt macOS nach Zugriff für das **Terminal**. Erlauben.
+Falls abgelehnt: **Systemeinstellungen → Datenschutz & Sicherheit → Kamera →** Terminal aktivieren, das
+Terminal-Fenster schließen und die Start-Datei erneut öffnen. Die Oberfläche zeigt bei diesem Fehler eine
+Erklärung.
 
-Lädt `hand_landmarker.task` von Googles MediaPipe-Modellserver nach `models/` (nicht im Git).
-Ohne das Modell läuft nur die Synthetik (`config/synthetic.yaml`). Auf diesem Rechner bereits geladen.
+### 3. Ausprobieren ohne Kamera
 
-Prüfen, ob Modell und MediaPipe zusammenpassen (ohne Kamera):
+Quelle **Demo-Band** → **Starten** → **Tracking starten**. Ein simuliertes Teil fährt durchs Bild; Kennzahlen
+sollten grün werden. So siehst du in einer Minute, ob alles funktioniert.
 
-```bash
-python tools/check_hand.py        # erwartet: "DETECTOR OK: … ms/frame"
-```
+### 4. Hand ausprobieren
 
-### 3. Kamera-Berechtigung (macOS)
+Erkennung **Hand** wählen. Fehlt das Modell, erscheint **Handmodell laden** (7,8 MB von Google, einmalig).
+Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil unter *Feineinstellungen* auf
+**Hand** stellen (wird beim Wechsel der Erkennung automatisch gesetzt).
 
-Beim ersten `python -m ctrack` fragt macOS nach Kamerazugriff für die Terminal-App (Terminal,
-iTerm, VS Code …). Falls versehentlich abgelehnt:
-**Systemeinstellungen → Datenschutz & Sicherheit → Kamera →** Terminal-App aktivieren, Terminal neu starten.
+### 5. Bauteil einlernen
 
-### 4. Belichtungs-Offset messen (P1-3, empfohlen vor Messungen)
+1. Quelle *Kamera* → **Starten**, Erkennung **Bauteil**.
+2. Teil so vor die Kamera legen, wie θ = 0 gelten soll.
+3. **Aus Livebild einlernen**, Rechteck **eng um das Teil** ziehen, Namen eingeben, **Speichern**.
+   (Alternativ **Bild laden …** mit einem Foto.)
+4. **Tracking starten**.
+
+Hinweise: Gleichbleibender Abstand Kamera–Teil (±10 % Größe verfälscht die Pose, ±20 % wird nicht erkannt),
+ein asymmetrisches Merkmal am Teil, mindestens ~70 % sichtbar. **Kleine Referenzbilder sind schneller**
+(Matching-Aufwand wächst mit der Fläche): lieber eng ziehen. Findet er das Teil nicht, unter
+*Feineinstellungen* die **Mindest-Übereinstimmung** senken (Standard 85 %; niedriger heißt mehr Fehlmessungen).
+
+### 6. Daten an einen Empfänger senden
+
+Karte *Ausgabe & Aufnahme*: **Pose per UDP senden**, Adresse und Port eintragen (Standard
+`127.0.0.1:5005`). Zum Testen auf demselben Rechner im Terminal `python tools/receiver.py`
+(das ist der einzige Schritt, der ein Terminal braucht).
+
+## Für Fortgeschrittene (Terminal)
+
+Diese Schritte brauchen die Kommandozeile (`source .venv/bin/activate` vorher).
+
+### Belichtungs-Offset messen (P1-3, empfohlen vor Messungen)
 
 Der Default `exposure_offset_ms: 30` ist geschätzt. Messen:
 
@@ -50,7 +68,7 @@ Die Kamera muss das Fenster "probe" sehen — eine Laptop-Webcam sieht den eigen
 Spiegel davor halten oder eine externe Webcam auf den Laptop-Bildschirm richten. Den ausgegebenen
 Wert in `config/default.yaml` → `camera.exposure_offset_ms` eintragen.
 
-### 5. Filter-Tuning (erledigt für die Hand, Bestätigung steht aus)
+### Filter-Tuning (Hand-Profil ist voreingestellt, Bestätigung steht aus)
 
 `process_noise: 50` aus dem PRD ist für eine Hand viel zu träge: Im ersten Live-Lauf (19 s getrackt)
 war die 100-ms-Prädiktion damit **schlechter als gar keine Prädiktion** (p95 97 px = 7,6 % der Breite
@@ -81,31 +99,9 @@ for q in 5000 50000 300000; do
 done
 ```
 
-### 6. Bauteil per Referenzbild einlernen (Template-Matching)
+### GitHub
 
-```bash
-python tools/teach.py --camera 0 --out templates/part.png --mask-auto
-python -m ctrack -c config/shape_match.yaml
-```
-
-- **Nullstellung:** Das Teil so hinlegen, wie θ = 0 gelten soll. Die Orientierung im Referenzbild ist
-  die Null, die Mitte des ausgeschnittenen Rechtecks der Pose-Ursprung.
-- **ROI:** eng um das Teil ziehen. `--mask-auto` schreibt `templates/part_mask.png` (nur Teilfläche zählt);
-  Maske ansehen und in `config/shape_match.yaml` bei `detector.mask` eintragen.
-- **Voraussetzungen:** feste Kamerahöhe (kein Maßstabs-Suchlauf; ±10 % Größe = Pixelfehler, ±20 % = nicht
-  gefunden), Teil mit asymmetrischem Merkmal (sonst θ nur modulo Symmetrie), mindestens ~70 % sichtbar.
-- **Tuning:** `min_score` (0.85) senken, wenn das Teil nicht gefunden wird; `downscale: 8` beschleunigt die
-  globale Suche, verliert aber kleine Teile. Das Kalman-`process_noise` in `shape_match.yaml` steht auf
-  50 (Band-Bewegung); bei von Hand geführtem Teil auf ~300000 erhöhen (siehe Schritt 5).
-
-### 7. Git-Remote (optional)
-
-Das Repo ist lokal initialisiert (Branch `main`), hat aber **keinen Remote** — ich habe kein
-GitHub-Repo ohne Rückfrage angelegt. Falls gewünscht:
-
-```bash
-gh repo create conveyor-tracking --private --source=. --remote=origin --push
-```
+Das Projekt liegt in einem privaten Repo: https://github.com/luneumann/conveyor-tracking (Branch `main`).
 
 ## Nach jeder Änderung
 
@@ -145,6 +141,9 @@ gh repo create conveyor-tracking --private --source=. --remote=origin --push
   Schwerpunkt (Ground-Truth-Fehler bis ~20 px nur dort; innen ~0,05 px). Betrifft nur die Synthetik.
 - **Latenz bei Replay** misst nur die Verarbeitungszeit (`t_sent − t_read`), weil `t_exposure`
   aus der Aufnahme stammt (ADR-007).
+- **Web-Oberfläche ohne Anmeldung.** Sie läuft nur auf diesem Rechner (`127.0.0.1`) und prüft Host und Header gegen
+  Angriffe aus dem Browser, hat aber kein Login (ADR-010). Nicht ins Netz öffnen.
+- **Demo-Band hat ~25–28 fps** (die Simulation selbst kostet Rechenzeit); die Kamera-Bildrate ist noch nicht in der GUI gemessen.
 - **Template-Matching nur synthetisch geprüft.** Genauigkeit 0,1 px / 0,09° und alle Tests beziehen sich
   auf ein gerendertes Teil. Mit einem echten Bauteil (Spiegelungen, Schatten, Perspektive) ist noch nichts
   gemessen. Grenzen (Maßstab, Verdeckung) in ADR-009.

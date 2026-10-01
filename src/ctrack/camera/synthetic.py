@@ -56,6 +56,7 @@ class SyntheticConveyorSource(CameraSource):
         self.is_live = realtime
         self.rng = np.random.default_rng(seed)
         self._frame_id = 0
+        self._noise: np.ndarray | None = None
         self._t0 = time.time()
         self._t_sim = 0.0
 
@@ -87,9 +88,11 @@ class SyntheticConveyorSource(CameraSource):
         image = np.full((h, w, 3), 35, dtype=np.uint8)
         render_object(image, pose, *self.object_size)
         if self.image_noise:
-            # One noise plane shared by the colour channels: 3x cheaper than per-channel noise.
-            noise = self.rng.normal(0, self.image_noise, (h, w)).astype(np.float32)
-            image = np.clip(image + noise[..., None], 0, 255).astype(np.uint8)
+            # Pre-generated noise plane, random crop per frame: looks like fresh noise, costs ~nothing.
+            if self._noise is None:
+                self._noise = self.rng.normal(0, self.image_noise, (h + 64, w + 64)).astype(np.float32)
+            oy, ox = self.rng.integers(0, 65, 2)
+            image = np.clip(image + self._noise[oy:oy + h, ox:ox + w, None], 0, 255).astype(np.uint8)
         frame = Frame(image=image, t_exposure=self._t0 + t_rel, frame_id=self._frame_id, ground_truth=pose)
         self._frame_id += 1
         return frame

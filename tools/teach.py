@@ -21,6 +21,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from ctrack.teach import auto_mask, save_template  # noqa: F401  (auto_mask re-exported)
+
 
 def grab_frame(device: int) -> np.ndarray:
     cap = cv2.VideoCapture(device)
@@ -48,19 +50,6 @@ def grab_frame(device: int) -> np.ndarray:
     return frame
 
 
-def auto_mask(crop_gray: np.ndarray) -> np.ndarray:
-    """Largest Otsu blob (either polarity: the one that does not touch most of the border), filled."""
-    _, bw = cv2.threshold(crop_gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    border = np.concatenate([bw[0], bw[-1], bw[:, 0], bw[:, -1]])
-    if border.mean() > 127:  # background is the bright class
-        bw = 255 - bw
-    contours, _ = cv2.findContours(bw, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    mask = np.zeros_like(crop_gray)
-    if contours:
-        cv2.drawContours(mask, [max(contours, key=cv2.contourArea)], -1, 255, cv2.FILLED)
-    return mask
-
-
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = p.add_mutually_exclusive_group(required=True)
@@ -84,20 +73,13 @@ def main(argv: list[str] | None = None) -> int:
         print("drag a rectangle around the part, ENTER to confirm, C to cancel")
         x, y, w, h = (int(v) for v in cv2.selectROI("teach", img, showCrosshair=True))
         cv2.destroyAllWindows()
-    if w < 8 or h < 8:
-        raise SystemExit("ROI too small / cancelled")
-    if x < 0 or y < 0 or x + w > img.shape[1] or y + h > img.shape[0]:
-        raise SystemExit(f"ROI {x},{y},{w},{h} is outside the {img.shape[1]}x{img.shape[0]} image")
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)[y:y + h, x:x + w]
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(args.out), gray)
-    print(f"template {w}x{h} -> {args.out}   (pose origin = template centre)")
-    if args.mask_auto:
-        mask_path = args.out.with_name(args.out.stem + "_mask.png")
-        mask = auto_mask(gray)
-        cv2.imwrite(str(mask_path), mask)
-        print(f"mask covers {mask.mean() / 255 * 100:.0f}% of the template -> {mask_path}")
+    try:
+        out, mask_path, coverage = save_template(img, (x, y, w, h), args.out, mask_auto=args.mask_auto)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    print(f"template {w}x{h} -> {out}   (pose origin = template centre)")
+    if mask_path is not None:
+        print(f"mask covers {coverage * 100:.0f}% of the template -> {mask_path}")
     return 0
 
 

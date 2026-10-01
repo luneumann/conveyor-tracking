@@ -192,3 +192,38 @@ Schnittstelle möglich); ArUco (Marker nötig); Momente/Hauptachse (180°-mehrde
 Es gibt keine Maßstabssuche: feste Kamerahöhe und gleichartige Teile sind Voraussetzung.
 `min_score` (Default 0.85) ist deshalb bewusst hoch — lieber kein Treffer als eine um Pixel falsche Pose.
 Laufzeit auf M3, 1280×720: lokal ≈ 25 ms, global ≈ 250 ms (`downscale: 4`) bzw. ≈ 115 ms (`downscale: 8`).
+
+---
+
+## ADR-010 — Bedienung über lokale Web-Oberfläche (stdlib-HTTP + MJPEG)
+
+**Entscheidung:** `python -m ctrack.gui` (bzw. Doppelklick auf `Conveyor Tracking starten.command`) startet
+einen HTTP-Server auf `127.0.0.1:8765` (nächster freier Port bis 8774) und öffnet den Browser. Eine
+Seite (`gui/static/index.html`, ohne Build-Schritt und ohne externe Bibliotheken) bedient Quelle,
+Erkennung, Einlernen, Tracking, Ausgabe, Aufnahme. Das Live-Bild kommt als MJPEG-Stream
+(`/stream.mjpg`), Status per Polling (`/api/status`, 300 ms), Aktionen per JSON-POST.
+Die Pipeline läuft in einem Hintergrund-Thread (`gui/engine.py`); Tracker und Filter werden nur von
+diesem Thread angefasst, HTTP-Handler wirken über Einstellungen (jeden Frame neu gelesen) und eine
+Kommando-Queue (Einlocken, Zurücksetzen).
+
+**Begründung:** Bedienung ohne Terminalbefehle; Einlernen per Rechteck-Ziehen auf dem Bild braucht eine
+echte GUI. Eine Webseite statt OpenCV-Fenster erlaubt Buttons, Galerie und Kennzahlen mit Zielwerten
+und ließe sich später auch von einem anderen Rechner aus bedienen (dafür fehlt aktuell bewusst der Netzzugriff, siehe Sicherheit).
+
+**Alternativen:** Flask/FastAPI + WebSocket (Abhängigkeit ohne Mehrwert für einen Nutzer);
+Tkinter/Qt (Installation, kein Browser-Zugriff von anderem Rechner); Electron (Overkill);
+OpenCV-Fenster mit Tasten (keine Galerie, kein Einlernen per Maus).
+
+**Konsequenzen:**
+- **Sicherheit:** Jede Webseite im Browser kann Anfragen an `localhost` schicken. Der Server prüft deshalb
+  den `Host`-Header (gegen DNS-Rebinding) und verlangt für jede ändernde Anfrage `X-Requested-With: ctrack`
+  (erzwingt CORS-Preflight, der nie freigegeben wird). Dateinamen (Referenzbilder, Logs) sind per Regex
+  auf `[A-Za-z0-9_-]` bzw. `*.csv` beschränkt. Es gibt **keine Authentifizierung** — nur auf `127.0.0.1`
+  betreiben; für Zugriff aus dem Netz wäre ein Token nötig.
+- **POST-Body:** wird vor dem Routing immer vollständig gelesen (sonst zerlegt ein ungelesener Body bei
+  Keep-Alive die nächste Anfrage; Regressionstest vorhanden).
+- **Einstellungen:** Quelle/Detektor/Referenzbild neu → Sitzung startet neu; Horizont, Überbrückung,
+  Bewegungsprofil, Mindestscore, Senden, Aufnahme gelten live. Zuletzt benutzte Werte liegen in
+  `logs/gui_settings.json`; Senden, Aufnahme und Auto-Lock werden bewusst **nicht** wiederhergestellt.
+- **Eine Sitzung, ein Nutzer:** kein Mehrbenutzerbetrieb, ein Browser-Tab genügt (mehrere sehen denselben Stream).
+- **Aufwand:** MJPEG-Overlay + JPEG ≈ 3 ms pro Frame, beeinflusst die Bildrate nicht messbar.

@@ -29,6 +29,8 @@ CameraSource ─Frame─▶ Detector ─Detection?─▶ Tracker ──▶ Trans
 | Metriken | `src/ctrack/metrics.py` | CSV, Prädiktionsfehler-Matching, Live-Perzentile |
 | Visualizer | `src/ctrack/visualizer.py` | Overlay + Tastatur |
 | Einstieg | `src/ctrack/main.py` | CLI, Loop, Tasten `L`/`R`/`Q` |
+| Web-GUI | `src/ctrack/gui/` | `engine.py` (Thread, Einstellungen, Einlernen), `server.py` (HTTP + MJPEG), `static/index.html` (ADR-010) |
+| Einlernen | `src/ctrack/teach.py` | `save_template`, `auto_mask` — von GUI und `tools/teach.py` genutzt |
 | Tools | `tools/` | `receiver.py`, `analyze.py`, `latency_probe.py`, `fetch_model.py`, `check_hand.py`, `teach.py` |
 
 ## 2. Datenmodell
@@ -139,3 +141,28 @@ verzögert geschrieben, damit jede Zeile ihren eigenen Fehler enthält.
 7. `MetricsLogger.log(step)` puffert die Zeile, löst ältere Prädiktionen auf, schreibt CSV.
 8. `Visualizer.show(step, stats)` zeichnet Overlay, liefert gedrückte Taste zurück.
 9. `tools/receiver.py` empfängt, zeigt Rate, Zustand, Paketverlust, Latenz.
+
+## 7. Web-GUI: API
+
+Alle ändernden Aufrufe: `POST`, JSON, Header `X-Requested-With: ctrack`.
+
+| Methode | Pfad | Zweck |
+|---|---|---|
+| GET | `/` | Oberfläche |
+| GET | `/api/status` | Status, Kennzahlen, Einstellungen, Referenzbilder, Aufnahmen |
+| GET | `/stream.mjpg` | Live-Bild mit Overlay (Multipart-JPEG) |
+| POST | `/api/session` | `{"action": "start"\|"stop"}` |
+| POST | `/api/settings` | beliebige Teilmenge der Einstellungen; liefert den neuen Status |
+| POST | `/api/command` | `{"name": "lock"\|"reset"}` |
+| POST | `/api/teach/freeze` | aktuelles Livebild einfrieren (409 ohne laufende Kamera) |
+| POST | `/api/teach/upload` | Rohbytes eines Bildes (PNG/JPEG) als Einlern-Bild |
+| GET | `/api/teach/frame.jpg` | eingefrorenes / hochgeladenes Bild |
+| POST | `/api/teach/save` | `{"name", "roi": [x,y,w,h], "mask_auto"}` → speichert, wählt aus |
+| GET | `/api/templates/<name>[_mask].png` | Referenzbild bzw. Maske |
+| POST | `/api/templates/delete` | `{"name"}` (Demo-Teil geschützt) |
+| POST | `/api/hand-model` | Handmodell herunterladen |
+| GET | `/logs/<name>.csv` | Messdaten eines Laufs |
+
+Einstellungen (`Settings` in `engine.py`): `source` (camera/demo/replay), `device`, `recording`,
+`detector` (hand/template), `template`, `preset` (band/hand), `min_score`, `horizon_ms`, `coast_ms`,
+`auto_lock`, `output_enabled`, `host`, `port`, `record`.
