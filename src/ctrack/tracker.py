@@ -8,10 +8,11 @@ from .types import Detection, Pose, TrackState, Velocity
 
 class Tracker:
     def __init__(self, predictor: KalmanPredictor, coast_ms: float = 300.0,
-                 reacquire_radius_px: float = 80.0) -> None:
+                 reacquire_radius_px: float = 80.0, reacquire_growth_px_s: float = 600.0) -> None:
         self.predictor = predictor
         self.coast_s = coast_ms / 1000.0
         self.reacquire_radius = reacquire_radius_px
+        self.reacquire_growth = reacquire_growth_px_s
         self.state = TrackState.SEARCHING
         self.lock_requested = False
         self.t_last_seen: float | None = None
@@ -36,6 +37,12 @@ class Tracker:
             return None
         return self.predictor.predict(min(t, self.t_last_seen + self.coast_s))
 
+    def reacquire_radius_at(self, t: float) -> float:
+        """Re-acquire gate: tight right after the loss, growing while LOST (a returning object rarely
+        reappears where it vanished)."""
+        t_lost = self.t_lost if self.t_lost is not None else t
+        return self.reacquire_radius + self.reacquire_growth * max(t - t_lost, 0.0)
+
     def update(self, detection: Detection | None, t: float) -> TrackState:
         s = self.state
         if s is TrackState.SEARCHING:
@@ -54,7 +61,7 @@ class Tracker:
         elif s is TrackState.LOST:
             if detection is not None:
                 ref = self.reference_pose(t)
-                if ref is not None and ref.distance(detection.pose) <= self.reacquire_radius:
+                if ref is not None and ref.distance(detection.pose) <= self.reacquire_radius_at(t):
                     self._acquire(detection, t)
         return self.state
 

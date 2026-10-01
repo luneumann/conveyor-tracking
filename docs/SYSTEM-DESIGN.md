@@ -68,7 +68,7 @@ Invariante (P0-6): `state == TRACKING ⇒ pose != null` — erzwungen im Konstru
 | TRACKING | keine Detektion | COASTING | nur predict (on demand) |
 | COASTING | Detektion, t − t_last_seen ≤ `coast_ms` | TRACKING | predict + update |
 | COASTING | t − t_last_seen > `coast_ms` | LOST | – |
-| LOST | Detektion mit Abstand ≤ `reacquire_radius_px` zur Referenzposition | TRACKING | **re-init** mit Detektion |
+| LOST | Detektion mit Abstand ≤ Gate(t) zur Referenzposition | TRACKING | **re-init** mit Detektion |
 | beliebig | Reset (`R`) | SEARCHING | verworfen |
 
 Ein Lock-Request bleibt bestehen, bis eine Detektion kommt ("im nächsten Frame mit Hand").
@@ -77,6 +77,13 @@ Ein Lock-Request bleibt bestehen, bis eine Detektion kommt ("im nächsten Frame 
 Bild laufen und ein Re-Acquire unmöglich machen. Re-Init statt Update, weil die
 Geschwindigkeitsschätzung nach einem Verlust veraltet ist.
 
+**Wachsendes Gate:** `Gate(t) = reacquire_radius_px + reacquire_growth_px_s · (t − t_lost)`.
+Direkt nach dem Verlust ist das Fenster eng (80 px), danach wächst es (600 px/s). Grund: Im zweiten
+Live-Lauf kam die Hand nach 14 s ≥ 272 px entfernt vom Verlustort zurück; mit festem 80-px-Fenster war
+keine einzige von 346 Detektionen in LOST akzeptabel. Auf den geloggten Detektionen dieses Laufs
+wird der Verlust jetzt nach 0,53 s wieder aufgenommen. Bei später mehreren Objekten muss die
+Zuordnung (Identität statt reiner Distanz) ergänzt werden — dann ist das Wachstum zu überdenken.
+
 ## 4. Konfiguration
 
 Siehe `config/default.yaml` (PRD 5.5) und `config/synthetic.yaml`. Ergänzungen gegenüber PRD:
@@ -84,6 +91,7 @@ Siehe `config/default.yaml` (PRD 5.5) und `config/synthetic.yaml`. Ergänzungen 
 | Schlüssel | Default | Zweck |
 |---|---|---|
 | `detector.model_path` | `models/hand_landmarker.task` | MediaPipe-Modell (ADR-003) |
+| `tracker.reacquire_growth_px_s` | 600 | Wachstum des Re-Acquire-Gates in LOST |
 | `predictor.process_noise_theta` | 2.0 | ADR-005 |
 | `predictor.measurement_noise_theta` | 0.05 | ADR-005 |
 | `output.include_predicted` | true | P1-4 |

@@ -76,7 +76,8 @@ def main(argv: list[str] | None = None) -> int:
             metrics.log(step)
             stats = metrics.stats()
             if visualizer:
-                key = visualizer.show(step, stats, tracker.reference_pose(step.frame.t_exposure))
+                t = step.frame.t_exposure
+                key = visualizer.show(step, stats, tracker.reference_pose(t), tracker.reacquire_radius_at(t))
                 if key == "l":
                     tracker.request_lock()
                 elif key == "r":

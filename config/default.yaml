@@ -1,7 +1,7 @@
 # Stage 1 live demo: laptop webcam + hand (PRD 5.5)
 camera:    { type: webcam, device: 0, width: 1280, height: 720, exposure_offset_ms: 30 }
 detector:  { type: hand, min_confidence: 0.6, model_path: models/hand_landmarker.task }
-tracker:   { coast_ms: 300, reacquire_radius_px: 80 }
+tracker:   { coast_ms: 300, reacquire_radius_px: 80, reacquire_growth_px_s: 600 }
 predictor: { process_noise: 300000.0, measurement_noise: 4.0, horizon_ms: 100 }
 transform: { type: identity }
 output:    { type: udp, host: 127.0.0.1, port: 5005, rate_hz: 0, include_predicted: true }   # rate_hz 0 = every frame

@@ -11,7 +11,7 @@ import yaml
 DEFAULTS: dict[str, Any] = {
     "camera": {"type": "webcam", "device": 0, "width": 1280, "height": 720, "exposure_offset_ms": 30},
     "detector": {"type": "hand", "min_confidence": 0.6, "model_path": "models/hand_landmarker.task"},
-    "tracker": {"coast_ms": 300, "reacquire_radius_px": 80},
+    "tracker": {"coast_ms": 300, "reacquire_radius_px": 80, "reacquire_growth_px_s": 600},
     "predictor": {
         "process_noise": 300000.0,  # hand motion; belt (constant velocity) wants ~50, see config/synthetic.yaml
         "process_noise_theta": 2.0,

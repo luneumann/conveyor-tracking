@@ -71,6 +71,26 @@ def test_reacquire_near_predicted_position(tracker):
     assert tracker.predictor.velocity().vx == 0  # re-initialized, not updated with stale velocity
 
 
+def test_gate_grows_while_lost(tracker):
+    tracker.request_lock()
+    t = _track_moving(tracker)
+    tracker.update(None, t + 0.35)
+    t_lost = tracker.t_lost
+    assert tracker.reacquire_radius_at(t_lost) == pytest.approx(80)
+    assert tracker.reacquire_radius_at(t_lost + 1.0) == pytest.approx(80 + 600)
+
+
+def test_reacquire_far_away_after_a_while(tracker):
+    """Object comes back ~400 px from where it vanished: rejected right away, accepted after 1 s."""
+    tracker.request_lock()
+    t = _track_moving(tracker)
+    tracker.update(None, t + 0.35)
+    ref_x = tracker.reference_pose(t + 0.35).x
+    far = det(ref_x + 400, 300)
+    assert tracker.update(far, t + 0.4) is S.LOST          # gate ~110 px
+    assert tracker.update(far, t + 0.35 + 1.0) is S.TRACKING  # gate ~680 px
+
+
 def test_no_reacquire_far_away(tracker):
     tracker.request_lock()
     t = _track_moving(tracker)

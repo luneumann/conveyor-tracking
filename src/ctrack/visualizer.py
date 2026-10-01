@@ -57,7 +57,8 @@ class Visualizer:
         self.reacquire_radius = reacquire_radius_px
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
 
-    def render(self, step: StepResult, stats: dict[str, float], reference: Pose | None = None) -> np.ndarray:
+    def render(self, step: StepResult, stats: dict[str, float], reference: Pose | None = None,
+               gate_radius: float | None = None) -> np.ndarray:
         img = step.frame.image.copy()
         det = step.detection
         if det is not None:
@@ -67,7 +68,7 @@ class Visualizer:
             if step.state is TrackState.SEARCHING:
                 draw_axes(img, det.pose, color=(200, 200, 200))
         if step.state is TrackState.LOST and reference is not None:
-            cv2.circle(img, (round(reference.x), round(reference.y)), round(self.reacquire_radius),
+            cv2.circle(img, (round(reference.x), round(reference.y)), round(gate_radius or self.reacquire_radius),
                        STATE_COLORS[TrackState.LOST], 1, cv2.LINE_AA)
         if step.pose is not None:
             draw_axes(img, step.pose)
@@ -102,8 +103,9 @@ class Visualizer:
             cv2.putText(img, text, (pad, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2 if scale > 0.6 else 1,
                         cv2.LINE_AA)
 
-    def show(self, step: StepResult, stats: dict[str, float], reference: Pose | None = None) -> str | None:
-        cv2.imshow(self.window, self.render(step, stats, reference))
+    def show(self, step: StepResult, stats: dict[str, float], reference: Pose | None = None,
+             gate_radius: float | None = None) -> str | None:
+        cv2.imshow(self.window, self.render(step, stats, reference, gate_radius))
         key = cv2.waitKey(1) & 0xFF
         return chr(key).lower() if key != 255 else None
 

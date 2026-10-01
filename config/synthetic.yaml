@@ -12,7 +12,7 @@ camera:
   jitter_s: 0.002           # timestamp jitter
   realtime: true
 detector:  { type: blob }
-tracker:   { coast_ms: 300, reacquire_radius_px: 80 }
+tracker:   { coast_ms: 300, reacquire_radius_px: 80, reacquire_growth_px_s: 600 }
 predictor: { process_noise: 50.0, measurement_noise: 1.0, horizon_ms: 100 }
 transform: { type: identity }
 output:    { type: udp, host: 127.0.0.1, port: 5005, rate_hz: 0 }

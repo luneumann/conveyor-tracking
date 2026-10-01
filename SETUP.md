@@ -120,8 +120,9 @@ gh repo create conveyor-tracking --private --source=. --remote=origin --push
   + separate Modelldatei.
 - **`confidence`** der Hand ist der Handedness-Score von MediaPipe — ein Proxy, keine echte
   Detektionsgüte.
-- **Re-Acquire-Referenz** in LOST: Extrapolation auf `coast_ms` gedeckelt (SYSTEM-DESIGN §3) —
-  Interpretation von "nahe prädizierter Position", bitte bestätigen.
+- **Re-Acquire:** Referenzposition in LOST ist auf `coast_ms` gedeckelt, das Gate wächst mit der Zeit in LOST
+  (SYSTEM-DESIGN §3). Offline an einem Live-Lauf geprüft (0,53 s), live noch nicht erneut gemessen.
+  Der Startwert 600 px/s ist geschätzt.
 - **Stream-Erweiterung:** Feld `"v": 1` zusätzlich zu PRD 5.4 (Versionierung für P2-7).
 - **Synthetik am Bildrand:** Wird das Objekt vom Bildrand abgeschnitten, verschiebt sich der
   Schwerpunkt (Ground-Truth-Fehler bis ~20 px nur dort; innen ~0,05 px). Betrifft nur die Synthetik.
