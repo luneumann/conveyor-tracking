@@ -24,7 +24,13 @@ python tools/fetch_model.py
 ```
 
 Lädt `hand_landmarker.task` von Googles MediaPipe-Modellserver nach `models/` (nicht im Git).
-Ohne das Modell läuft nur die Synthetik (`config/synthetic.yaml`).
+Ohne das Modell läuft nur die Synthetik (`config/synthetic.yaml`). Auf diesem Rechner bereits geladen.
+
+Prüfen, ob Modell und MediaPipe zusammenpassen (ohne Kamera):
+
+```bash
+python tools/check_hand.py        # erwartet: "DETECTOR OK: … ms/frame"
+```
 
 ### 3. Kamera-Berechtigung (macOS)
 
@@ -89,10 +95,13 @@ gh repo create conveyor-tracking --private --source=. --remote=origin --push
 
 **Beim Aufbau entstanden / bekannt:**
 
-- **Live-Hand-Pfad ungetestet.** Webcam und MediaPipe-Inferenz konnte ich ohne deine Kamera und
-  ohne Modell-Download nicht ausführen. Mathematik der Hand-Pose ist getestet, die API-Aufrufe von
-  `HandDetector` nur gegen die Signatur von MediaPipe 1.0.1 geprüft. Erster Live-Start = erster echter Test.
-- **MediaPipe 1.x** hat die alte `mp.solutions.hands`-API entfernt → Tasks-API + separate Modelldatei (ADR-003).
+- **Live-Hand-Pfad nur teilweise getestet.** Modell lädt, `HandDetector` läuft auf Leerbildern
+  (11,6 ms/Frame, keine Fehldetektion). Webcam und echte Hand habe ich nicht gesehen — Mathematik der
+  Hand-Pose ist unit-getestet, die Detektionsrate ≥ 90 % (P0-2) ist noch ungemessen. Erster Live-Start
+  = erster echter Test.
+- **MediaPipe auf 0.10.21 gepinnt.** 1.0.1 stürzt auf macOS/Apple Silicon beim Start ab (Metal-Service,
+  auch mit CPU-Delegate; ADR-003). 1.x hat außerdem die alte `mp.solutions.hands`-API entfernt → Tasks-API
+  + separate Modelldatei.
 - **`confidence`** der Hand ist der Handedness-Score von MediaPipe — ein Proxy, keine echte
   Detektionsgüte.
 - **Re-Acquire-Referenz** in LOST: Extrapolation auf `coast_ms` gedeckelt (SYSTEM-DESIGN §3) —

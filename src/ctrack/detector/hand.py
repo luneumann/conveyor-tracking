@@ -30,7 +30,8 @@ def hand_pose_from_landmarks(points: np.ndarray) -> Pose:
 
 @DETECTORS.register("hand")
 class HandDetector(Detector):
-    def __init__(self, min_confidence: float = 0.6, model_path: str = "models/hand_landmarker.task") -> None:
+    def __init__(self, min_confidence: float = 0.6, model_path: str = "models/hand_landmarker.task",
+                 delegate: str = "cpu") -> None:
         from mediapipe.tasks.python import BaseOptions, vision
 
         if not Path(model_path).exists():
@@ -39,7 +40,9 @@ class HandDetector(Detector):
             )
         self.min_confidence = min_confidence
         options = vision.HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=model_path),
+            # CPU by default: the Metal GPU delegate aborts the process when its service is unavailable.
+            base_options=BaseOptions(model_asset_path=model_path,
+                                     delegate=BaseOptions.Delegate[delegate.upper()]),
             running_mode=vision.RunningMode.VIDEO,
             num_hands=1,
             min_hand_detection_confidence=min_confidence,

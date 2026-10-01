@@ -17,6 +17,7 @@ python -m ctrack -c config/synthetic.yaml --auto-lock
 
 # Live mit Webcam + Hand (Modell einmalig laden)
 python tools/fetch_model.py
+python tools/check_hand.py                          # Modell + MediaPipe ok?
 python -m ctrack                                    # Hand zeigen, L drücken
 
 # Zweites Terminal: Stream empfangen

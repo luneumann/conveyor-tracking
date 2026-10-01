@@ -7,7 +7,7 @@ name = "ctrack"
 version = "0.1.0"
 description = "Conveyor tracking prototype: camera-based virtual encoder"
 requires-python = ">=3.11,<3.13"
-dependencies = ["opencv-python>=4.9", "mediapipe>=0.10.14", "numpy>=1.26", "pyyaml>=6"]
+dependencies = ["opencv-python>=4.9", "mediapipe==0.10.21", "numpy>=1.26", "pyyaml>=6"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "matplotlib>=3.8"]

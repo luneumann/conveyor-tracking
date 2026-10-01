@@ -46,12 +46,19 @@ eine klare Fehlermeldung mit allen verfügbaren Namen aus.
 **Entscheidung:** `HandDetector` nutzt die MediaPipe-Tasks-API im `VIDEO`-Modus
 (`detect_for_video`), Modell `hand_landmarker.task` aus `models/`.
 
-**Begründung:** Die Legacy-API `mp.solutions.hands` ist in MediaPipe 1.x entfernt. Der
+**Begründung:** Die Legacy-API `mp.solutions.hands` ist in MediaPipe 1.x entfernt (die Tasks-API gibt es
+auch in 0.10.x). Der
 `VIDEO`-Modus nutzt internes Tracking zwischen Frames (schneller als `IMAGE`) und ist
 synchron (deterministisch, keine Callback-Reihenfolge).
 
 **Alternativen:** `LIVE_STREAM` (asynchron, Ergebnis kommt in einem späteren Loop-Durchlauf
 → verfälscht die Latenzmessung); eigene Hand-Segmentierung (unzuverlässig).
+
+**Version gepinnt auf `mediapipe==0.10.21`:** MediaPipe 1.0.1 bricht auf macOS (Apple Silicon) beim
+Anlegen des Landmarkers mit `Check failed: service_ Service is unavailable` ab
+(`DrishtiMetalHelper` in `TensorsToDetectionsCalculator::Open`), auch mit `delegate=CPU`.
+Reproduziert im eigenen Terminal (nicht sandbox-bedingt); 0.10.21 läuft (11,6 ms/Frame auf M3,
+CPU). Vor einem Upgrade `python tools/check_hand.py` ausführen.
 
 **Konsequenzen:** Das Modell (~7,5 MB) wird nicht mit pip installiert, sondern einmalig per
 `tools/fetch_model.py` geladen (siehe `SETUP.md`). Die Pose-Berechnung aus den Landmarks ist
