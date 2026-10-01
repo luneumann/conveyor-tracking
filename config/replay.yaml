@@ -1,0 +1,8 @@
+# Replay a recording made with --record (P1-1). Timestamps come from <file>.csv.
+camera:    { type: video_file, path: recordings/demo.mp4, realtime: false }
+detector:  { type: hand, min_confidence: 0.6, model_path: models/hand_landmarker.task }
+tracker:   { coast_ms: 300, reacquire_radius_px: 80 }
+predictor: { process_noise: 50.0, measurement_noise: 4.0, horizon_ms: 100 }
+transform: { type: identity }
+output:    { type: none }
+metrics:   { csv: logs/replay.csv }

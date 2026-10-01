@@ -1,0 +1,7 @@
+opencv-python>=4.9
+mediapipe>=0.10.14
+numpy>=1.26
+pyyaml>=6
+# dev / tools
+pytest>=8
+matplotlib>=3.8
