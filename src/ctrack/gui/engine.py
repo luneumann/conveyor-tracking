@@ -40,7 +40,7 @@ PRESETS = {  # motion preset -> (process_noise, measurement_noise)
     "hand": (300000.0, 4.0),  # hand-held / jerky: follows quickly (see SETUP.md, filter tuning)
 }
 BUILTIN_TEMPLATES = {"synthetic_part"}
-SPEEDS = {"fast": (140, 336), "balanced": (168, 448), "precise": (224, 448)}   # learned detector: (crop edge, global width)
+SPEEDS = {"fast": (140, 336), "balanced": (168, 448), "precise": (336, 448)}   # learned detector: (crop edge, global width)
 
 
 @dataclass

@@ -80,3 +80,38 @@ sie speichern aber nichts dauerhaft Gelerntes und finden das Objekt nicht von se
 
 **Zeiten sind nur auf ruhigem Rechner vergleichbar:** Zeitweise belegten macOS-Hintergrunddienste (`photolibraryd`, `photoanalysisd`, `appstoreagent`) den
 Rechner (Last > 50). Messungen aus solchen Phasen wurden verworfen bzw. wiederholt; ebenso eine Überlastung durch drei gleichzeitig gestartete eigene Jobs.
+
+## 7. Genauigkeit der Maske/Pose auf einer echten Aufnahme (02.10.2026)
+
+**Anlass:** Die markierte Region um das Objekt war eine ungenaue „Wolke" (14-px-Kachelraster, hochgerechnete Wahrscheinlichkeitskarte).
+
+**Aufbau:** Eine eigene Webcam-Aufnahme (Handy und weißes Quadrat in der Hand, dazu leere Szenen). Je Objekt 5 Anlernbilder, getestet auf
+anderen Bildern desselben Clips (14 Testbilder, davon 8 Handy, 6 Quadrat). Referenzmasken = SAM mit von Hand gesetzten Boxen, visuell geprüft
+(drei Bilder verworfen). Wegen n = 14 und nur einer Aufnahme zählt die Reihenfolge, nicht die Nachkommastelle; die Referenz stammt selbst von
+SAM, was SAM-basierte Verfahren begünstigt.
+
+| Methode | IoU (Median) | Mittelpunktfehler, % der Objektgröße (Median / p90) | Winkelfehler ° (Median / p90) |
+|---|---|---|---|
+| bisher: ganzes Bild, 448 px breit | 0,74 | 6,4 / 14 | 6,3 / 48 |
+| DINO-Ausschnitt 168 px | 0,70 | 8,3 / 13 | 6,0 / 31 |
+| **DINO-Ausschnitt 336 px** | **0,83** | **3,3 / 8** | **4,3 / 23** |
+| SAM-Verfeinerung (Box + Punkt, ~500 ms CPU) | 0,82 | 7,0 / 13 | 10,8 / 28 |
+| SAM auf 2×-Ausschnitt | 0,60 | 9,1 / 19 | 19,7 / 49 |
+
+**Folge:** Die Einstellung „Genau" nutzt jetzt 336 px (vorher 224). SAM-Verfeinerung bringt gegenüber dem 336-px-Ausschnitt keinen Gewinn und
+ist wesentlich langsamer → vorerst nicht eingebaut.
+
+**Kosten je Erkennung** (Detektor-Schritt auf derselben Aufnahme, 500 Bilder, Modell mit fp32-Backbone):
+
+| Ausschnitt | CPU | Neural Engine |
+|---|---|---|
+| 168 px | 33 ms (29/s) | 11 ms (88/s) |
+| 224 px | 56 ms (18/s) | 18 ms (56/s) |
+| 336 px | 257 ms (3,8/s) | 28 ms (34/s) |
+
+Mit der Neural Engine kostet „Genau" also kaum Tempo; ohne sie ist es deutlich langsamer (INT8 auf CPU: ca. 150 ms). Ein Modell, das mit dem
+INT8-Backbone gelernt wurde, kann die Neural Engine nicht nutzen (CoreML nimmt nur fp32) — beim Messen aufgefallen, weil „beschleunigt" und
+„CPU" zunächst identische Zeiten ergaben.
+
+**Offen:** Fehlalarme auf leeren Bildern (ohne Score-Schwelle: 14 von 38 Bildern mit irgendeinem Fleck); Anteil im echten Detektor mit
+`min_score` noch nicht gemessen. Genauigkeit des weißen Quadrats (IoU 0,80) liegt unter dem des Handys (0,86).
