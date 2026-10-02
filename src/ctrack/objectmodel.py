@@ -27,6 +27,13 @@ VIEW = 224                      # training / tracking crop size (16 x 16 patches
 GRID = VIEW // PATCH
 BORDER = (114, 114, 114)        # constant border, used identically in training and at run time
 POS_COVERAGE, NEG_COVERAGE = 0.7, 0.1
+# Ridge strength of the logistic head: a trade-off, measured on 6 independent trainings (held-out scenes, see ADR-011).
+#   l2 = 1      unstable: the same photos gave 0..52 of 60 failed scenes depending on the random augmentation (mean 31 %)
+#   l2 = 300    mean failure 3 % (worst run 10/60); real object-free camera frames still teach it to reject a near-identical
+#               distractor (false alarm 17 %, recall 75 % in the hard lookalike test)
+#   l2 >= 1e4   0 failures, but the head degenerates to a class-mean prototype: empty scenes no longer help (false alarm 100 %)
+# Prototype-anchored ridge and up-weighting real negatives were tried and gave "reject everything" or "accept everything".
+DEFAULT_L2 = 300.0
 
 
 def crop_view(bgr: np.ndarray, cx: float, cy: float, side: float, view: int = VIEW) -> tuple[np.ndarray, float]:
@@ -57,6 +64,7 @@ class ObjectModel:
     created: str = ""
     aspect_lo: float = 0.0     # accepted long/short side ratio of the object's mask (0 = unchecked)
     aspect_hi: float = 0.0
+    backbone: str = "dinov2_small.onnx"   # the head only fits the backbone it was trained on
 
     def aspect_ok(self, aspect: float) -> bool:
         return self.aspect_hi <= 0 or self.aspect_lo <= aspect <= self.aspect_hi
@@ -70,14 +78,15 @@ class ObjectModel:
         path.parent.mkdir(parents=True, exist_ok=True)
         np.savez(path, w=self.w, b=self.b, mu=self.mu, sigma=self.sigma, name=self.name,
                  n_images=self.n_images, n_patches=self.n_patches, created=self.created,
-                 aspect_lo=self.aspect_lo, aspect_hi=self.aspect_hi)
+                 aspect_lo=self.aspect_lo, aspect_hi=self.aspect_hi, backbone=self.backbone)
 
     @classmethod
     def load(cls, path: Path) -> ObjectModel:
         d = np.load(path, allow_pickle=False)
         return cls(str(d["name"]), d["w"], float(d["b"]), d["mu"], d["sigma"], int(d["n_images"]),
                    int(d["n_patches"]), str(d["created"]),
-                   float(d["aspect_lo"]) if "aspect_lo" in d else 0.0, float(d["aspect_hi"]) if "aspect_hi" in d else 0.0)
+                   float(d["aspect_lo"]) if "aspect_lo" in d else 0.0, float(d["aspect_hi"]) if "aspect_hi" in d else 0.0,
+                   str(d["backbone"]) if "backbone" in d else "dinov2_small.onnx")
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -173,7 +182,7 @@ def _augment(img: np.ndarray, mask: np.ndarray, rng: np.random.Generator,
 
 
 def _fit_logistic(X: np.ndarray, y: np.ndarray, l2: float = 1.0, iters: int = 25) -> tuple[np.ndarray, float]:
-    """Class-balanced L2 logistic regression by Newton / IRLS. X: (n, d) standardized, y in {0, 1}."""
+    """Class-balanced ridge logistic regression by Newton / IRLS. X: (n, d) standardized, y in {0, 1}."""
     n, d = X.shape
     Xb = np.hstack([X, np.ones((n, 1))])
     sw = np.where(y == 1, 0.5 / max(y.sum(), 1), 0.5 / max((1 - y).sum(), 1)) * n   # balance the classes
@@ -194,18 +203,28 @@ def _fit_logistic(X: np.ndarray, y: np.ndarray, l2: float = 1.0, iters: int = 25
 
 def train_object_model(samples: list[tuple[np.ndarray, np.ndarray]], dino: DinoFeatures, name: str,
                        views_per_image: int = 12, seed: int = 0,
-                       progress: Callable[[float], None] | None = None) -> ObjectModel:
-    """Train the head from (BGR image, bool mask) pairs. ~0.8 s per image on an M3 (12 views each)."""
+                       progress: Callable[[float], None] | None = None,
+                       empty_scenes: list[np.ndarray] | None = None, l2: float = DEFAULT_L2,
+                       hard_threshold: float = 0.2) -> ObjectModel:
+    """Train the head from (BGR image, bool mask) pairs. ~0.8 s per image on an M3 (12 views each).
+
+    empty_scenes: camera frames WITHOUT the object (the real surroundings). They are the most truthful negatives:
+    used as backdrops for pasting the object and for distractors, as pure-background views, and for hard-negative mining.
+    """
     if not samples:
         raise ValueError("Keine Beispielbilder")
     rng = np.random.default_rng(seed)
     for i, (img, mask) in enumerate(samples):
         if mask.sum() < 64:
             raise ValueError(f"Bild {i + 1}: Maske zu klein")
-    backgrounds = [_background_only(img, mask) for img, mask in samples]
+    empties = list(empty_scenes or [])
+    painted = [_background_only(img, mask) for img, mask in samples]
+    backgrounds = painted + empties
     feats, labels = [], []
     n_dis = max(views_per_image // 2, 4)
-    total = len(samples) * (views_per_image + n_dis) + len(samples) * 6
+    n_empty_views = min(3 * len(empties), 36)
+    n_hard = 6 * len(painted) + 3 * len(empties)
+    total = len(samples) * (views_per_image + n_dis) + n_empty_views + n_hard
     done = 0
     for i, (img, mask) in enumerate(samples):
         for v in range(views_per_image):
@@ -227,19 +246,26 @@ def train_object_model(samples: list[tuple[np.ndarray, np.ndarray]], dino: DinoF
             done += 1
             if progress:
                 progress(min(done / total, 1.0))
+    for _ in range(n_empty_views):                      # the real, object-free surroundings: pure negatives
+        view = _photometric(_random_background(empties[int(rng.integers(len(empties)))], rng), rng)
+        feats.append(dino.extract(view).reshape(-1, EMBED_DIM))
+        labels.append(np.zeros(GRID * GRID))
+        done += 1
+        if progress:
+            progress(min(done / total, 1.0))
     X, y = np.vstack(feats), np.concatenate(labels)
     if y.sum() < 10 or (1 - y).sum() < 10:
         raise ValueError("Zu wenige Objekt- bzw. Hintergrund-Bildstellen zum Lernen")
     mu, sigma = X.mean(0), X.std(0) + 1e-6
-    w, b = _fit_logistic((X - mu) / sigma, y)
+    w, b = _fit_logistic((X - mu) / sigma, y, l2=l2)
 
     # Hard-negative mining: object-free views the head still calls "object" are added as negatives.
     hard = []
-    for bg in backgrounds:
-        for _ in range(6):
+    for bi, bg in enumerate(backgrounds):
+        for _ in range(6 if bi < len(painted) else 3):
             f = dino.extract(_photometric(_random_background(bg, rng), rng)).reshape(-1, EMBED_DIM)
             p = 1.0 / (1.0 + np.exp(-np.clip(((f - mu) / sigma) @ w + b, -30, 30)))
-            hard.append(f[p > 0.2])
+            hard.append(f[p > hard_threshold])
             done += 1
             if progress:
                 progress(min(done / total, 1.0))
@@ -247,12 +273,12 @@ def train_object_model(samples: list[tuple[np.ndarray, np.ndarray]], dino: DinoF
     if len(H):
         X2, y2 = np.vstack([X, H]), np.concatenate([y, np.zeros(len(H))])
         mu, sigma = X2.mean(0), X2.std(0) + 1e-6
-        w, b = _fit_logistic((X2 - mu) / sigma, y2)
+        w, b = _fit_logistic((X2 - mu) / sigma, y2, l2=l2)
         X, y = X2, y2
     aspects = [mask_aspect(m) for _, m in samples]
     return ObjectModel(name, w.astype(np.float32), b, mu.astype(np.float32), sigma.astype(np.float32),
                        n_images=len(samples), n_patches=len(y), created=time.strftime("%Y-%m-%d %H:%M:%S"),
-                       aspect_lo=0.7 * min(aspects), aspect_hi=1.4 * max(aspects))
+                       aspect_lo=0.7 * min(aspects), aspect_hi=1.4 * max(aspects), backbone=dino.filename)
 
 
 # ---------------------------------------------------------------------------------------------------------

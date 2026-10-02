@@ -208,6 +208,8 @@ a { color: var(--accent); }
         <button class="btn" id="lcShot3">In 3 s aufnehmen</button>
         <button class="btn" id="lcFile">Bild laden …</button>
         <input type="file" id="lcFileInput" accept="image/*" hidden>
+        <button class="btn" id="lcEmpty" title="Objekt aus dem Bild nehmen, dann drücken: 3 s lang wird die leere Umgebung aufgenommen">Leere Szene aufnehmen</button>
+        <span class="note" id="lcEmptyInfo" hidden><span id="lcEmptyN"></span> <button class="btn small" id="lcEmptyClear" style="height:26px;padding:0 8px">×</button></span>
       </div>
       <div class="row" id="lcClick" style="margin:0">
         <button class="btn" id="lcClear">Klicks zurücksetzen</button>
@@ -224,6 +226,7 @@ a { color: var(--accent); }
     <div class="metrics" id="metrics">
       <div class="tile" id="tFps"><div class="k">Bildrate</div><div class="v" id="vFps">–</div><div class="goal">Ziel ≥ 25 fps</div></div>
       <div class="tile" id="tLat"><div class="k">Latenz (p95)</div><div class="v" id="vLat">–</div><div class="goal">Ziel &lt; 100 ms</div></div>
+      <div class="tile" id="tPer"><div class="k">Alter der Messung (p95)</div><div class="v" id="vPer">–</div><div class="goal">Erkennung → Pose, ältestes Datum</div></div>
       <div class="tile" id="tErr"><div class="k">Vorhersagefehler (p95)</div><div class="v" id="vErr">–</div><div class="goal">Ziel &lt; 2 % der Breite</div></div>
       <div class="tile"><div class="k">Geschwindigkeit</div><div class="v" id="vSpeed">–</div><div class="goal" style="--x:0">&nbsp;</div></div>
       <div class="tile"><div class="k">Pose (x · y · θ)</div><div class="v" id="vPose" style="font-size:18px;padding-top:4px">–</div><div class="goal">Pixel, Grad</div></div>
@@ -259,6 +262,7 @@ a { color: var(--accent); }
         <p class="note">Das Programm lernt dein Objekt aus etwa 5 Fotos: Objekt in die Kamera halten, <b>einmal anklicken</b>, fertig. Danach findet es das Objekt bei anderem Abstand und leichter Drehung wieder.</p>
         <div id="noteVision" style="margin-top:10px"><p class="note bad">Dafür fehlen die Bild-Modelle (ca. 133 MB, einmalig, von Hugging Face).</p>
           <div class="row"><button class="btn small" id="btnVision">Modelle laden</button></div></div>
+        <p class="note" id="noteAccel" style="margin-top:10px" hidden></p>
         <div class="gallery" id="galleryLearned" role="radiogroup" aria-label="Gelernte Objekte"></div>
         <div class="row" style="margin-top:12px"><button class="btn small primary" id="btnLearn">Neues Objekt anlernen</button></div>
       </div>
@@ -409,6 +413,11 @@ function render() {
   $("#noteVision").hidden = S.vision_models;
   renderGallery();
   renderLearned();
+  const ac = S.accel || {}, na = $("#noteAccel");
+  na.hidden = !(isLearned && ac.available);
+  if (!na.hidden) na.textContent = ac.failed && Object.keys(ac.failed).length ? "Beschleunigung (Neural Engine) nicht verfügbar – Erkennung läuft auf der CPU."
+    : ac.pending && ac.pending.length ? "Neural Engine wird vorbereitet (einmalig ca. 30 s je Bildgröße) – bis dahin läuft die Erkennung auf der CPU."
+    : ac.ready && ac.ready.length ? "Beschleunigung aktiv: Neural Engine (" + ac.ready.join(", ") + ")." : "Neural Engine startet beim ersten Erkennen.";
   $("#btnTeachLive").disabled = !running || teaching || S.frames === 0 || !!learn;
   $("#btnTeachFile").disabled = teaching || !!learn;
   $("#btnLearn").disabled = !S.vision_models || !!learn || !!teach;
@@ -449,6 +458,7 @@ function render() {
   tile("#tFps", running && S.fps != null ? S.fps >= 25 : null);
   $("#vLat").innerHTML = running && S.latency_p95 != null ? fmt(S.latency_p95) + " <small>ms</small>" : "–";
   tile("#tLat", running && S.latency_p95 != null ? S.latency_p95 < 100 : null);
+  $("#vPer").innerHTML = running && S.perception_p95 != null ? fmt(S.perception_p95) + " <small>ms</small>" : "–";
   $("#vErr").innerHTML = running && S.pred_err_pct != null ? fmt(S.pred_err_pct, 2) + " <small>%</small>" : "–";
   tile("#tErr", running && S.pred_err_pct != null ? S.pred_err_pct < 2 : null);
   $("#vSpeed").innerHTML = S.velocity ? fmt(S.velocity.speed) + " <small>px/s</small>" : "–";
@@ -586,11 +596,14 @@ function renderLearn() {
   $("#lcCompose").hidden = click; $("#lcClick").hidden = !click; $("#lcNameWrap").hidden = click; $("#lcTrain").hidden = click;
   $("#learnHint").innerHTML = click
     ? "<b>Auf das Objekt klicken</b> (linke Maustaste). Zeigt die Maske nur einen Teil: weiter auf den fehlenden Teil klicken. Zu viel erfasst: <b>rechte Maustaste</b> (oder Umschalt+Klick) auf den Überschuss. Dann <b>Foto übernehmen</b>."
-    : `<b>Objekt anlernen:</b> ${S.running ? "Halte das Objekt in die Kamera und nimm ein Foto auf. Wiederhole das mit <b>anderem Abstand und leicht gedrehtem Objekt</b> (ca. 5 Fotos), dann <b>Trainieren</b>." : "Starte links die Kamera (Karte 1) oder lade Fotos aus Dateien."} <b>${L.count}</b> Foto(s) aufgenommen.`;
+    : `<b>Objekt anlernen:</b> ${S.running ? "Halte das Objekt in die Kamera und nimm ein Foto auf. Wiederhole das mit <b>anderem Abstand und leicht gedrehtem Objekt</b> (ca. 5 Fotos), dann <b>Trainieren</b>. <i>Optional, aber hilfreich:</i> Objekt aus dem Bild nehmen und <b>Leere Szene aufnehmen</b> — so lernt das Programm deine echte Umgebung als „nicht das Objekt“." : "Starte links die Kamera (Karte 1) oder lade Fotos aus Dateien."} <b>${L.count}</b> Foto(s) aufgenommen.`;
   const busyTrain = training || learn.training && L.phase !== "error";
   $("#lcShot").disabled = !S.running || S.frames === 0 || busyTrain || learn.countdown > 0;
   $("#lcShot3").disabled = $("#lcShot").disabled; $("#lcFile").disabled = busyTrain || learn.countdown > 0;
   $("#lcAdd").disabled = !learn.mask || learn.busy;
+  $("#lcEmpty").disabled = !S.running || S.frames === 0 || busyTrain || !!L.empty_capturing;
+  $("#lcEmpty").textContent = L.empty_capturing ? "Nehme auf … (3 s)" : "Leere Szene aufnehmen";
+  $("#lcEmptyInfo").hidden = !L.empty; $("#lcEmptyN").textContent = `Leere Szene: ${L.empty || 0} Bilder`;
   const nameOk = /^[A-Za-z0-9_-]{1,40}$/.test($("#lcName").value.trim());
   $("#lcTrain").disabled = L.count < 2 || busyTrain || !nameOk;
   $("#lcTrain").textContent = busyTrain ? "Trainiere …" : `Trainieren (${L.count} Fotos)`;
@@ -618,6 +631,8 @@ $("#lcFileInput").onchange = async (e) => {
     const d = await r.json(); if (!r.ok) throw new Error(d.error); await showPhoto();
   } catch (err) { toast(err.message, true); }
 };
+$("#lcEmpty").onclick = async () => { try { await api("/api/learn/empty"); poll(); } catch (e) { toast(e.message, true); } };
+$("#lcEmptyClear").onclick = () => act(() => api("/api/learn/empty/clear"));
 $("#lcClear").onclick = () => { learn.pts = []; learn.labels = []; learn.mask = null; drawLearn(); renderLearn(); };
 $("#lcDiscard").onclick = () => { learn.phase = "compose"; learn.img = null; learn.mask = null; render(); };
 $("#lcAdd").onclick = async () => { try { await api("/api/learn/add"); learn.phase = "compose"; learn.img = null; learn.mask = null; poll(); render(); } catch (e) { toast(e.message, true); } };

@@ -42,12 +42,25 @@ Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil
 4. Auf das **Objekt klicken**. Zeigt die türkise Maske nur einen Teil: weiter auf den fehlenden Teil klicken.
    Zu viel markiert (z. B. die Hand): **rechte Maustaste** auf den Überschuss. → **Foto übernehmen**.
 5. Das Ganze **~5 Mal** mit **anderem Abstand, leicht gedrehtem Objekt, anderem Griff und gern anderem Hintergrund**.
-6. Name eintragen → **Trainieren** (ca. 15 s). Danach ist das Objekt aktiv; **Tracking starten**.
+6. **Empfohlen:** Objekt aus dem Bild nehmen, Kamera auf deine normale Umgebung richten → **Leere Szene aufnehmen**
+   (3 s). Das Programm lernt dann deine echte Umgebung als „nicht das Objekt“ und verwechselt weniger.
+7. Name eintragen → **Trainieren** (ca. 15 s; beim allerersten Mal ca. 40 s, siehe unten). Danach ist das Objekt aktiv;
+   **Tracking starten**.
 
 Tipps: Je unterschiedlicher die 5 Fotos, desto robuster. Wird fälschlich etwas anderes erkannt: **Mindest-Sicherheit**
 (Feineinstellungen) erhöhen oder mit mehr/anderen Fotos neu anlernen. Ist es zu langsam: **Tempo** auf *Schnell*
 (schneller, etwas ungenauer). Grenzen siehe ADR-011 (θ nur modulo 180°, Objekte kleiner als ~12 % der
 Bildbreite werden unzuverlässig).
+
+**Neural Engine (Mac):** Das Bildmodell läuft auf der Neural Engine, wenn sie verfügbar ist (rund 5× schneller, gleiche
+Ergebnisse). Für jede Bildgröße muss sie **einmalig ca. 30 s** übersetzt werden — währenddessen läuft die Erkennung
+auf der CPU weiter, du musst nicht warten (die Oberfläche zeigt „Neural Engine wird vorbereitet“). Der Zwischenspeicher
+`models/coreml_cache/` belegt **ca. 0,4 GB je Bildgröße** und darf jederzeit gelöscht werden. Abschalten: Umgebungsvariable
+`CTRACK_NO_ACCEL=1`.
+
+**Bereits angelernte Objekte neu anlernen:** Objekte, die vor dem 02.10.2026 angelernt wurden (z. B. `objekt_1`), sind mit
+der damaligen, zu schwachen Regularisierung trainiert und teils unzuverlässig (Ausfälle je nach Training 0–87 %).
+Die Fotos werden nicht gespeichert, nur das Gelernte — bitte einmal neu anlernen.
 
 ### 5b. Flaches Teil per Referenzbild einlernen (Template-Matching)
 
@@ -160,9 +173,12 @@ Das Projekt liegt in einem privaten Repo: https://github.com/luneumann/conveyor-
 - **Gelerntes Objekt nur synthetisch und an einem Foto-Satz geprüft.** Alle Genauigkeitswerte (ADR-011) stammen von einem
   synthetisch komponierten Teil bzw. von Szenen, die aus *einem* Handyfoto zusammengesetzt wurden. Mit echten
   Kameraaufnahmen, anderen Objekten und anderen Hintergründen ist noch nichts gemessen — dafür sind echte Aufnahmen nötig.
-- **Bildrate des gelernten Objekts:** 25 fps bei „Ausgewogen“ nur bei sichtbarem Objekt und ruhigem Rechner (gemessen ohne echte
-  Kamera); in der Oberfläche/Demo und wenn das Objekt fehlt eher 11–20 fps. Das Bildmodell läuft auf der CPU (CoreML war
-  langsamer). Optimierungsmöglichkeiten: `docs/OPTIMIERUNG.md`.
+- **Bildrate des gelernten Objekts:** 30 fps Kamera-/Ausgaberate dank asynchroner Erkennung (Demo-Band); die Erkennung selbst liefert
+  mit Neural Engine alle ~33 ms, mit CPU alle ~70–100 ms („Alter der Messung“ in der Oberfläche). Mit echter Kamera noch nicht
+  gemessen. Auf Rechnern ohne Neural Engine bleibt der CPU-Weg (INT8, ca. 17 ms je Aufruf).
+- **Training des gelernten Objekts war instabil** (ADR-011-Nachtrag): Ridge-Stärke von 1 auf 300 erhöht, Ausfälle 31 % → 3 %.
+  Die frühere Aussage „30/30 gefunden“ stammte aus einem einzelnen Glückslauf. Auch jetzt kann ein einzelnes Training
+  schlechter ausfallen (schlechtester von 6 Läufen: 10 von 60 Szenen): bei schlechter Erkennung einfach neu trainieren.
 - **θ des gelernten Objekts nur modulo 180°** (Hauptachse der Maske).
 - **Beim Beenden von Python erscheint gelegentlich** `libc++abi: terminating … recursive_mutex lock failed` aus einer
   nativen Bibliothek (MediaPipe/ONNX). Exit-Code und Ergebnisse sind nicht betroffen; Ursache nicht untersucht.

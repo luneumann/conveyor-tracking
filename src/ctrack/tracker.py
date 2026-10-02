@@ -8,11 +8,13 @@ from .types import Detection, Pose, TrackState, Velocity
 
 class Tracker:
     def __init__(self, predictor: KalmanPredictor, coast_ms: float = 300.0,
-                 reacquire_radius_px: float = 80.0, reacquire_growth_px_s: float = 600.0) -> None:
+                 reacquire_radius_px: float = 80.0, reacquire_growth_px_s: float = 600.0,
+                 stale_ms: float = 150.0) -> None:
         self.predictor = predictor
         self.coast_s = coast_ms / 1000.0
         self.reacquire_radius = reacquire_radius_px
         self.reacquire_growth = reacquire_growth_px_s
+        self.stale_s = stale_ms / 1000.0       # only used by advance() (asynchronous detection)
         self.state = TrackState.SEARCHING
         self.lock_requested = False
         self.t_last_seen: float | None = None
@@ -73,6 +75,20 @@ class Tracker:
                 ref = self.reference_pose(t)
                 if ref is not None and ref.distance(detection.pose) <= self.reacquire_radius_at(t):
                     self._acquire(detection, t)
+        return self.state
+
+    def advance(self, t: float) -> TrackState:
+        """Time passes without a new detection RESULT (asynchronous detection: the worker is still busy).
+
+        Only demotes: TRACKING -> COASTING once the last sighting is older than `stale_ms`, and -> LOST after
+        `coast_ms`. A frame without a result is not a missed detection, so nothing is concluded from it earlier.
+        """
+        if self.state in (TrackState.TRACKING, TrackState.COASTING) and self.t_last_seen is not None:
+            age = t - self.t_last_seen
+            if age > self.coast_s:
+                self.state, self.t_lost = TrackState.LOST, t
+            elif age > self.stale_s and self.state is TrackState.TRACKING:
+                self.state = TrackState.COASTING
         return self.state
 
     def _acquire(self, detection: Detection, t: float) -> None:

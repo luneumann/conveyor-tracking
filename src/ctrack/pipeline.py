@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from .camera.base import CameraSource
+from .detector.async_detector import AsyncDetector
 from .detector.base import Detector
 from .predictor import KalmanPredictor
 from .publisher.base import Publisher
@@ -29,12 +30,17 @@ class StepResult:
     message: Message
     published: bool
     latency_ms: float
+    # Asynchronous detection: `detection` may belong to an EARLIER frame than `frame`.
+    detection_t: float | None = None      # exposure time of the frame the detection was made on
+    detection_new: bool = False           # a fresh result arrived in this step (log it / feed metrics once)
+    perception_ms: float | None = None    # age of the newest detection at this frame: t_exposure - detection_t
 
 
 class Pipeline:
     def __init__(self, camera: CameraSource, detector: Detector, tracker: Tracker, transform: Transform,
                  publisher: Publisher, include_predicted: bool = True,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time, async_detect: bool = False,
+                 detection_max_age_s: float = 0.25) -> None:
         self.camera = camera
         self.detector = detector
         self.tracker = tracker
@@ -44,6 +50,10 @@ class Pipeline:
         self.clock = clock
         self.horizon_s = tracker.predictor.horizon_s
         self._seq = 0
+        # Asynchronous detection decouples camera/output rate from the detector (see detector/async_detector.py).
+        self._async = AsyncDetector(detector) if async_detect else None
+        self.detection_max_age_s = detection_max_age_s
+        self._last_det: tuple[float, Detection] | None = None
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any], **overrides: Any) -> Pipeline:
@@ -57,7 +67,8 @@ class Pipeline:
                 {k: v for k, v in cfg["output"].items() if k != "include_predicted"}),
         }
         built = {name: overrides[name] if name in overrides else make() for name, make in parts.items()}
-        return cls(**built, include_predicted=cfg["output"].get("include_predicted", True))
+        return cls(**built, include_predicted=cfg["output"].get("include_predicted", True),
+                   async_detect=bool(cfg.get("pipeline", {}).get("async_detect", False)))
 
     def step(self) -> StepResult | None:
         frame = self.camera.read()
@@ -67,9 +78,26 @@ class Pipeline:
 
     def process(self, frame: Frame) -> StepResult:
         t_read = self.clock()
-        detection = self.detector.detect(frame)
         t = frame.t_exposure
-        state = self.tracker.update(detection, t)
+        detection_t: float | None = None
+        detection_new = False
+        if self._async is None:
+            detection = self.detector.detect(frame)
+            state = self.tracker.update(detection, t)
+            if detection is not None:
+                detection_t, detection_new = t, True
+        else:
+            self._async.submit(frame)
+            for r in self._async.poll():                   # late measurements, fused at their own capture time
+                self.tracker.update(r.detection, r.t_exposure)
+                if r.detection is not None:
+                    self._last_det = (r.t_exposure, r.detection)
+                    detection_new = True
+            state = self.tracker.advance(t)
+            detection = None
+            if self._last_det is not None and t - self._last_det[0] <= self.detection_max_age_s:
+                detection_t, detection = self._last_det    # newest detection (possibly a few frames old), for the overlay
+        perception_ms = (t - detection_t) * 1000.0 if detection_t is not None else None
 
         pose = velocity = predicted = None
         t_predicted = None
@@ -95,9 +123,12 @@ class Pipeline:
             self._seq += 1
         latency_ms = (t_sent - (t if self.camera.is_live else t_read)) * 1000.0
         return StepResult(frame, t_read, detection, state, pose, velocity, predicted, t_predicted,
-                          message, published, latency_ms)
+                          message, published, latency_ms, detection_t, detection_new, perception_ms)
 
     def close(self) -> None:
         self.camera.close()
-        self.detector.close()
+        if self._async is not None:
+            self._async.close()          # also closes the wrapped detector
+        else:
+            self.detector.close()
         self.publisher.close()

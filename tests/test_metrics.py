@@ -18,7 +18,9 @@ def _step(i, t, det_x=None, pred=None, horizon=0.1, state=TrackState.TRACKING):
     msg = Message(i, state, t, t + 0.01, pose, vel, "px", "image", 1.0)
     return StepResult(Frame(IMG, t, i), t + 0.005, detection, state, pose, vel,
                       Pose(pred, 0.0, 0.0) if pred is not None else None,
-                      t + horizon if pred is not None else None, msg, True, 10.0)
+                      t + horizon if pred is not None else None, msg, True, 10.0,
+                      detection_t=t if detection is not None else None, detection_new=detection is not None,
+                      perception_ms=0.0 if detection is not None else None)
 
 
 def test_prediction_error_matched_to_nearest_frame(tmp_path):
@@ -74,3 +76,25 @@ def test_stats():
     assert s["latency_p95"] == pytest.approx(10.0)
     assert s["pred_err_p95"] == pytest.approx(0.0)
     assert math.isnan(s["gt_err_p95"])
+
+
+def test_async_detection_is_logged_once_and_matched_at_its_own_time(tmp_path):
+    """A late result is a measurement of ITS frame; a repeated stale detection must not be logged or matched again."""
+    import dataclasses
+
+    path = tmp_path / "m.csv"
+    m = MetricsLogger(csv=str(path), match_tolerance_ms=25)
+    s0 = _step(0, 0.0, det_x=100, pred=110.0)                       # predicts x=110 for t=0.1
+    # frame at t=0.13 carries a detection that was made on the frame at t=0.1 (x=111): fresh, 30 ms old
+    s1 = dataclasses.replace(_step(1, 0.13, det_x=111), detection_t=0.10, detection_new=True, perception_ms=30.0)
+    # next frame still shows that same (now stale) detection: must be ignored
+    s2 = dataclasses.replace(_step(2, 0.16, det_x=111), detection_t=0.10, detection_new=False, perception_ms=60.0)
+    for s in (s0, s1, s2):
+        m.log(s)
+    m.close()
+    rows = list(csv.DictReader(open(path)))
+    assert float(rows[0]["pred_err_px"]) == pytest.approx(1.0)       # matched to the detection's time 0.10, not 0.13
+    assert rows[1]["det_x"] != "" and rows[1]["perception_ms"] == "30.0"
+    assert rows[2]["det_x"] == "" and rows[2]["perception_ms"] == ""
+    assert list(m.perception) == [0.0, 30.0]                          # the stale repeat (60 ms) was not counted
+    assert m.stats()["perception_p95"] == pytest.approx(28.5)

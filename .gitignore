@@ -13,3 +13,5 @@ templates/*
 !templates/synthetic_part.png
 models/*.onnx
 models/objects/
+.venv-tools/
+models/coreml_cache/

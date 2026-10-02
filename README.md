@@ -26,7 +26,7 @@ Alles Weitere steht in `SETUP.md`. Für Entwickler gibt es zusätzlich die Komma
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                                              # 116 Tests, ohne Kamera
+pytest                                              # 137 Tests, ohne Kamera
 python -m ctrack.gui                                # Web-Oberfläche (wie der Doppelklick)
 python -m ctrack -c config/synthetic.yaml --auto-lock   # OpenCV-Fenster statt Web-GUI
 python tools/receiver.py                            # Stream-Empfänger (zweites Terminal)

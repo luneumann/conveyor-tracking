@@ -166,6 +166,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/learn/segment":
                 d = self._json_body(raw)
                 return self._json({"area": e.learn_segment(d.get("points") or [], d.get("labels") or [])})
+            if path == "/api/learn/empty":
+                e.learn_empty_start()
+                return self._json({"ok": True})
+            if path == "/api/learn/empty/clear":
+                e.learn_empty_clear()
+                return self._json(e.snapshot())
             if path == "/api/learn/add":
                 return self._json({"count": e.learn_add()})
             if path == "/api/learn/remove":

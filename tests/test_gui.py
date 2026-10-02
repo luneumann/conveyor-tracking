@@ -288,3 +288,22 @@ def test_learn_without_models_is_a_clear_error(gui):
     code, d = gui.post("/api/learn/segment", {"points": [[320, 200]], "labels": [1]})
     assert code == 400 and "Modelle" in d["error"]
     assert not gui.status()["vision_models"]
+
+
+def test_empty_scene_capture_requires_running_camera(gui):
+    code, d = gui.post("/api/learn/empty")
+    assert code == 400 and "Kamera" in d["error"]
+    assert gui.post("/api/learn/empty/clear")[0] == 200
+
+
+def test_empty_scene_capture_collects_frames_and_can_be_cleared(gui):
+    gui.post("/api/settings", {"source": "demo", "detector": "template", "template": "synthetic_part"})
+    gui.post("/api/session", {"action": "start"})
+    gui.wait(lambda s: s["running"] and s["frames"] > 3)
+    assert gui.post("/api/learn/empty")[0] == 200
+    assert gui.post("/api/learn/empty")[0] == 400                    # already capturing
+    st = gui.wait(lambda s: s["learn"]["empty"] >= 12 and not s["learn"]["empty_capturing"], timeout=20)
+    assert st["learn"]["empty"] == 12
+    code, d = gui.post("/api/learn/empty/clear")
+    assert code == 200 and d["learn"]["empty"] == 0
+    gui.post("/api/session", {"action": "stop"})

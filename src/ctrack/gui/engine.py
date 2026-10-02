@@ -30,7 +30,7 @@ from ..publisher.udp import UdpPublisher
 from ..registry import load_builtins
 from ..objectmodel import ObjectModel, train_object_model
 from ..teach import save_template
-from ..vision.onnx_models import DinoFeatures, SamSegmenter, vision_models_present
+from ..vision.onnx_models import DinoFeatures, SamSegmenter, accelerator_status, vision_models_present
 from ..types import TrackState
 from ..visualizer import OverlayRenderer
 
@@ -137,6 +137,8 @@ class Engine:
         self._learn_mask: np.ndarray | None = None
         self._learn_samples: list[tuple[np.ndarray, np.ndarray]] = []
         self._learn_thumbs: list[bytes] = []
+        self._learn_empty: list[np.ndarray] = []      # camera frames without the object (real negatives)
+        self._empty_capturing = False
         self._learn = {"phase": "idle", "progress": 0.0, "error": None}
         self._obj_cache: tuple[tuple, list[dict[str, Any]]] | None = None
         self.settings = self._load_settings()
@@ -256,6 +258,8 @@ class Engine:
         overrides["predictor"] = {"process_noise": q, "measurement_noise": r, "horizon_ms": s.horizon_ms}
         overrides["tracker"] = {"coast_ms": s.coast_ms}
         overrides["output"] = {"type": "none"}
+        # Heavy learned detector on a live camera: run it in its own thread so camera/output keep their rate.
+        overrides["pipeline"] = {"async_detect": s.detector == "learned" and bool(s.learned) and s.source != "replay"}
         return load_config(None, overrides)
 
     def _loop(self, s: Settings) -> None:
@@ -374,7 +378,8 @@ class Engine:
             "detected": step.detection is not None,
             "score": _num(step.detection.confidence) if step.detection else None,
             "fps": _num(stats["fps"]), "latency_p50": _num(stats["latency_p50"]),
-            "latency_p95": _num(stats["latency_p95"]), "pred_err_p95": _num(stats["pred_err_p95"]),
+            "latency_p95": _num(stats["latency_p95"]), "perception_p95": _num(stats["perception_p95"]),
+            "pred_err_p95": _num(stats["pred_err_p95"]),
             "pred_err_pct": _num(stats["pred_err_p95_pct"]),
             "pose": None if pose is None else {"x": pose.x, "y": pose.y, "theta_deg": math.degrees(pose.theta)},
             "velocity": None if vel is None else {"vx": vel.vx, "vy": vel.vy, "speed": math.hypot(vel.vx, vel.vy)},
@@ -386,7 +391,7 @@ class Engine:
     @staticmethod
     def _idle_status() -> dict[str, Any]:
         return {"running": False, "starting": False, "error": None, "state": "IDLE", "lock_pending": False,
-                "detected": False, "score": None, "fps": None, "latency_p50": None, "latency_p95": None,
+                "detected": False, "score": None, "fps": None, "latency_p50": None, "latency_p95": None, "perception_p95": None,
                 "pred_err_p95": None, "pred_err_pct": None, "pose": None, "velocity": None, "frame_size": None,
                 "frames": 0, "sending": False, "packets_sent": 0, "recording": False, "csv": None,
                 "session": None, "last_run": None}
@@ -407,7 +412,9 @@ class Engine:
                     "templates": self.list_templates(), "recordings": self.list_recordings(),
                     "teach_ready": self._teach_frame is not None,
                     "learned": self.list_learned(), "vision_models": vision_models_present(self.root / "models"),
+                    "accel": accelerator_status(),
                     "learn": {**self._learn, "count": len(self._learn_samples), "has_frame": self._teach_frame is not None,
+                              "empty": len(self._learn_empty), "empty_capturing": self._empty_capturing,
                               "has_mask": self._learn_mask is not None},
                     "hand_model": (self.root / "models" / "hand_landmarker.task").exists()}
 
@@ -519,9 +526,36 @@ class Engine:
         if 0 <= index < len(self._learn_samples):
             del self._learn_samples[index], self._learn_thumbs[index]
 
+    def learn_empty_start(self, n: int = 12, seconds: float = 3.0) -> None:
+        """Grab n live frames over `seconds` (point the camera at the scene WITHOUT the object)."""
+        if not self._running() or self._last_raw is None:
+            raise ValueError("Kamera läuft nicht – zuerst starten")
+        if self._empty_capturing:
+            raise ValueError("Aufnahme läuft bereits")
+        n = int(min(max(n, 3), 24))
+        self._empty_capturing = True
+
+        def work() -> None:
+            try:
+                for _ in range(n):
+                    time.sleep(seconds / n)
+                    with self._frame_cv:
+                        frame = self._last_raw
+                    if frame is not None:
+                        self._learn_empty.append(frame.copy())
+                del self._learn_empty[:-36]          # keep the newest 36
+            finally:
+                self._empty_capturing = False
+
+        threading.Thread(target=work, daemon=True, name="ctrack-empty").start()
+
+    def learn_empty_clear(self) -> None:
+        self._learn_empty.clear()
+
     def learn_reset(self) -> None:
         self._learn_samples.clear()
         self._learn_thumbs.clear()
+        self._learn_empty.clear()
         self._teach_frame, self._learn_mask, self._sam_frame_id = None, None, None
         self._learn.update(phase="idle", progress=0.0, error=None)
 
@@ -536,6 +570,7 @@ class Engine:
         if self._learn["phase"] == "training":
             raise ValueError("Training läuft bereits")
         samples = list(self._learn_samples)
+        empties = list(self._learn_empty)
         thumb = self._learn_thumbs[0]
         self._learn.update(phase="training", progress=0.0, error=None)
 
@@ -543,12 +578,13 @@ class Engine:
             try:
                 with self._vision_lock:
                     _, dino = self._vision()
-                    model = train_object_model(samples, dino, name,
+                    model = train_object_model(samples, dino, name, empty_scenes=empties,
                                                progress=lambda f: self._learn.update(progress=float(f)))
                 model.save(self.objects_dir / f"{name}.npz")
                 (self.objects_dir / f"{name}.jpg").write_bytes(thumb)
                 self._learn_samples.clear()
                 self._learn_thumbs.clear()
+                self._learn_empty.clear()
                 self._learn.update(phase="done", progress=1.0)
                 self.update_settings({"detector": "learned", "learned": name})
             except Exception as e:  # shown in the GUI

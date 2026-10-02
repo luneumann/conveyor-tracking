@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+# Tests run on the CPU path: no 30 s background compilations, no native threads alive at interpreter exit.
+# tests/test_accelerator.py enables it explicitly (CTRACK_TEST_ACCEL=1).
+os.environ.setdefault("CTRACK_NO_ACCEL", "1")
 
 import numpy as np
 import pytest

@@ -8,6 +8,7 @@ probability map becomes a mask; its centroid and principal axis are the pose (th
 from __future__ import annotations
 
 import math
+import time
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,7 @@ from ..types import Detection, Frame
 from ..vision.onnx_models import DinoFeatures
 from .base import Detector
 
+FAST_GLOBAL_MS = 45.0   # below this a whole-frame search is cheap enough to run on every frame
 MAX_MISSES = 5          # frames without result before the crop tracker gives up and searches globally
 
 
@@ -29,7 +31,9 @@ class LearnedObjectDetector(Detector):
         if not Path(model_path).exists():
             raise FileNotFoundError(f"Gelerntes Objekt nicht gefunden: {model_path}")
         self.model = ObjectModel.load(Path(model_path))
-        self.dino = DinoFeatures(Path(models_dir))
+        if not (Path(models_dir) / self.model.backbone).exists():
+            raise FileNotFoundError(f"Das Objekt wurde mit {self.model.backbone} gelernt; die Datei fehlt in {models_dir}")
+        self.dino = DinoFeatures(Path(models_dir), self.model.backbone)
         self.min_score = min_score
         self.threshold = threshold
         self.crop_factor = crop_factor
@@ -37,6 +41,7 @@ class LearnedObjectDetector(Detector):
         self.view_size = view_size          # crop edge fed to the backbone (multiple of 14): speed <-> accuracy
         self.global_interval = max(int(global_interval), 1)
         self._since_global = self.global_interval
+        self._global_ms = 1e9                 # duration of the last whole-frame search (unknown at start: assume slow)
         self._last: tuple[float, float, float, float] | None = None   # x, y, theta, long side (px)
         self._misses = 0
 
@@ -74,9 +79,14 @@ class LearnedObjectDetector(Detector):
                 self._misses += 1                   # brief dropout: keep the crop position, no global search yet
                 if self._misses < MAX_MISSES:
                     return None
-            if self._since_global >= self.global_interval:
+            # Throttle only while the search is slower than a camera frame (CPU: ~150 ms); on the accelerator
+            # (~27 ms) every frame may search, which cuts the time to re-find an object.
+            interval = 1 if self._global_ms < FAST_GLOBAL_MS else self.global_interval
+            if self._since_global >= interval:
                 self._since_global = 0
+                t0 = time.perf_counter()
                 det = self._global_search(img)
+                self._global_ms = (time.perf_counter() - t0) * 1000.0
         if det is None:
             if self._misses >= MAX_MISSES:
                 self._last = None

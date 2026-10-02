@@ -24,7 +24,7 @@ COLUMNS = [
     "det_x", "det_y", "det_theta", "confidence",
     "pred_t", "pred_x", "pred_y", "pred_theta",
     "pred_err_px", "pred_err_deg",
-    "gt_err_px", "gt_err_deg",
+    "gt_err_px", "gt_err_deg", "perception_ms",
 ]
 
 
@@ -51,6 +51,7 @@ class MetricsLogger:
         self.pred_err_px = deque(maxlen=window)
         self.pred_err_deg = deque(maxlen=window)
         self.gt_err_px = deque(maxlen=window)
+        self.perception = deque(maxlen=window)   # age of each fresh detection when it arrived
         self._frame_times = deque(maxlen=60)
         self.rows_written = 0
         self.all_pred_err_px: list[float] = []  # full run, for summaries/tests
@@ -69,11 +70,13 @@ class MetricsLogger:
         if step.pose is not None and step.velocity is not None:
             row.update(x=_f(step.pose.x), y=_f(step.pose.y), theta=_f(step.pose.theta, 5),
                        vx=_f(step.velocity.vx), vy=_f(step.velocity.vy), omega=_f(step.velocity.omega, 5))
-        if step.detection is not None:
+        if step.detection is not None and step.detection_new:
             d = step.detection
             row.update(det_x=_f(d.x), det_y=_f(d.y), det_theta=_f(d.theta, 5), confidence=_f(d.confidence))
+            row["perception_ms"] = _f(step.perception_ms or 0.0, 1)
+            self.perception.append(step.perception_ms or 0.0)
             if step.state is TrackState.TRACKING:
-                self._measurements.append((t, d.pose))
+                self._measurements.append((step.detection_t if step.detection_t is not None else t, d.pose))
         if step.predicted is not None and step.t_predicted is not None:
             p = step.predicted
             row.update(pred_t=f"{step.t_predicted:.6f}", pred_x=_f(p.x), pred_y=_f(p.y), pred_theta=_f(p.theta, 5))
@@ -130,6 +133,8 @@ class MetricsLogger:
             "fps": fps,
             "latency_p50": percentile(self.latency, 50),
             "latency_p95": percentile(self.latency, 95),
+            "perception_p50": percentile(self.perception, 50),
+            "perception_p95": percentile(self.perception, 95),
             "pred_err_p50": percentile(self.pred_err_px, 50),
             "pred_err_p95": percentile(self.pred_err_px, 95),
             "pred_err_p95_pct": percentile(self.pred_err_px, 95) / width * 100.0,

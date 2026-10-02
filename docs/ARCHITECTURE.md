@@ -236,11 +236,11 @@ OpenCV-Fenster mit Tasten (keine Galerie, kein Einlernen per Maus).
 (wechselnder Abstand, leichte Drehung). Ablauf:
 1. **Anlernen (Oberfläche):** ~5 Fotos aufnehmen, je **ein Klick** aufs Objekt → MobileSAM liefert die Maske (bei Bedarf
    weitere Klicks, rechte Maustaste = „gehört nicht dazu“).
-2. **Training (~3 s/Foto):** Pro Foto entstehen ~12 Varianten (Objekt auf 15–80 % des Ausschnitts gezoomt, ±30° gedreht,
+2. **Training (~3 s/Foto, bei sauberem Rechner):** Pro Foto entstehen ~12 Varianten (Objekt auf 15–80 % des Ausschnitts gezoomt, ±30° gedreht,
    verschoben, Helligkeit/Kontrast/Unschärfe/Rauschen; 60 % auf Hintergründe der anderen Fotos geklebt). Dazu kommen
    zufällige **Störformen** (Kreise, Vielecke, Rechtecke in Zufallsfarben) als Gegenbeispiele. Ein eingefrorenes
    DINOv2-small (14-px-Patches, 384-d) liefert Merkmale; ein klassengewichteter logistischer Kopf (Newton/IRLS in NumPy)
-   lernt „Patch gehört zum Objekt“. Danach **Hard-Negative-Mining** (Hintergrund-Ansichten, die noch als Objekt gelten,
+   lernt „Patch gehört zum Objekt“ (Ridge-Stärke `l2 = 300`, siehe unten). Danach **Hard-Negative-Mining** (Hintergrund-Ansichten, die noch als Objekt gelten,
    werden Negativbeispiele) und Neutraining. Gespeichert wird nur der Kopf (`models/objects/<name>.npz`, wenige KB),
    dazu das Seitenverhältnis-Band der Masken (×0,7 … ×1,4).
 3. **Erkennen:** Wahrscheinlichkeitskarte → Maske → Schwerpunkt = (x, y), Hauptachse = θ, Kontur fürs Overlay. Im Verfolgen
@@ -284,3 +284,98 @@ SIFT/ORB-Merkmale (brauchen Textur; dunkle glatte Objekte fallen durch); Farbseg
   wieder akzeptiert); Ursache unklar (Teil vermutlich: ausgemalte Objektfläche sieht dem Objekt ähnlich). Mit echten
   Aufnahmen mehrerer Objekte erneut prüfen.
 - **Download:** MobileSAM (28,2 + 16,5 MB, MIT) und DINOv2-small (88,5 MB, Apache-2.0), Button „Modelle laden“.
+
+---
+
+## ADR-012 — Asynchrone Erkennung: Kamera- und Ausgaberate entkoppelt vom Detektor
+
+**Entscheidung:** Ein schwerer Detektor läuft in einem Arbeits-Thread (`detector/async_detector.py`). Die Hauptschleife
+reicht jeden Frame ohne Warten weiter; der Thread verarbeitet immer den **neuesten** wartenden Frame (ältere werden
+verworfen, wie bei einer Kamera mit Ein-Bild-Puffer) und liefert Ergebnisse mit der **Belichtungszeit ihres Frames**.
+Die Pipeline fusioniert jedes Ergebnis im Kalman-Filter zu diesem Zeitpunkt und veröffentlicht pro Kamerabild die
+**Vorhersage** für dessen `t_exposure`. Aktiv per `pipeline.async_detect: true` (Oberfläche: gelerntes Objekt, Live-Quelle).
+
+**Begründung:** 98 % der Erkennungszeit sind das Bildmodell (ADR-011). Synchron begrenzt es Kamera- und Ausgaberate auf
+~15–25 Hz. Entkoppelt laufen Kamera, Kalman und Ausgabe mit voller Kamerarate; die Erkennung liefert Messungen mit ihrer
+eigenen Rate. Das ist zugleich die konsequente Form der Latenzkompensation, um die es im Projekt geht.
+
+**Keine Rückrechnung (Out-of-Sequence-Handling) nötig:** Messungen kommen in Aufnahmereihenfolge an (ein Arbeits-Thread,
+FIFO). `KalmanPredictor.update` rückt nur bis zum Zeitpunkt der Messung vor, `predict` verändert den Zustand nie. Eine
+verspätete Messung ist damit eine gewöhnliche Messung; der Zustand liegt immer „bei der letzten Messung“, und jede
+Vorhersage rechnet von dort vorwärts. (Die Literatur-Verfahren mit Zurückholen und Neuaufrollen des Zustands werden nur
+bei Messungen außer der Reihe gebraucht.)
+
+**Zustandsmaschine:** Ein Frame ohne Ergebnis ist keine verpasste Erkennung. `Tracker.update` wird nur mit echten
+Ergebnissen aufgerufen (Zeitstempel des Ergebnisses). Dazwischen ruft die Pipeline `Tracker.advance(t)`: TRACKING →
+COASTING erst, wenn die letzte Sichtung älter als `stale_ms` (150) ist; → LOST nach `coast_ms`. `advance` stuft nur herab.
+
+**Kennzahlen:** `latency_ms` (Belichtung → Ausgabe) wird im asynchronen Betrieb klein, **verschweigt aber das Alter der
+Information**. Deshalb gibt es zusätzlich `perception_ms` = Alter der Messung, wenn sie eintrifft (CSV-Spalte
+`perception_ms`, Oberfläche „Alter der Messung“). `StepResult` bekommt `detection_t`, `detection_new`, `perception_ms`;
+CSV-Messwerte und Prädiktionsfehler beziehen sich nur auf frische Ergebnisse mit ihrem eigenen Zeitstempel.
+
+**Konsequenzen:**
+- Die veröffentlichte Pose ist **extrapoliert** um das Alter der Messung (typisch 60–100 ms). Bei ruckartiger Bewegung
+  wächst der Fehler (Konstant-Geschwindigkeits-Modell).
+- Nicht deterministisch (Thread-Timing): Replay und Offline-Auswertung laufen deshalb synchron (`async_detect: false`).
+- Ausnahmen aus dem Arbeits-Thread werden bei `poll()` in der Hauptschleife erneut ausgelöst (kein stiller Ausfall).
+
+**Nachtrag 02.10.2026 — Stabilität des Trainings (wichtige Korrektur zu den Messwerten oben):** Die Zahlen in der Tabelle
+(„30/30 gefunden“) stammen von **einem** Trainingslauf und waren ein Glückstreffer. Über 6 unabhängige Trainings mit
+denselben Fotos und je 60 festen Testszenen (Handyfoto auf Hintergrund mit Hand und Gesicht) scheiterten mit der
+anfänglichen schwachen Regularisierung (`l2 = 1`) zwischen 0 und 52 von 60 Szenen je Lauf (Mittel **31 %**): Das Modell
+überanpasst (≈ 12 000 Bildstellen in 384 Dimensionen). Die Ridge-Stärke ist der Hebel (mehr Trainingsansichten nicht):
+
+| `l2` | Ausfälle je Lauf (von 60) | Mittel | Median-Fehler (ok-Fälle) |
+|---|---|---|---|
+| 1 | 52, 1, 23, 34, 0, 0 | 31 % | 3,8 % |
+| 30 | 29, 0, 0, 14, 0, 1 | 12 % | 2,3 % |
+| **300** | 0, 0, 0, 10, 0, 0 | **3 %** | 2,1 % |
+| 3 000 | 0, 0, 0, 4, 0, 1 | 1 % | 2,5 % |
+| 10 000 … 1 000 000 | 0, 0, 0, 0, 0, 0 | 0 % | 2,3–2,6 % |
+
+**Zielkonflikt:** Bei großem `l2` entartet der Kopf zu einem Klassenmittel-Prototyp; dann helfen echte Gegenbeispiele nicht mehr.
+Im absichtlich harten Lookalike-Test (gleicher Körper, nur Markerfarbe anders; Gegenbeispiele = leere Szenen mit dem Lookalike)
+gilt: `l2 = 1`: Fehlalarm 0 %/Treffer 50 % · `30`: 0 %/75 % · **`300`: 17 %/75 %** · `3 000` und höher: 100 %/100 % (Gegenbeispiele wirkungslos).
+Gewählt: **`l2 = 300`** (`DEFAULT_L2` in `objectmodel.py`). Ausprobiert und verworfen: am Klassenmittel verankerte Ridge-Regression,
+höheres Gewicht für echte Gegenbeispiele (beide kippten zu „alles abweisen“ oder „alles erkennen“), 24 statt 12 Ansichten,
+strengeres Negativ-Mining (`p > 0,1`: kein Effekt).
+Zwei weitere Befunde: Die **INT8-Variante** des Bildmodells ist bei gleicher Regularisierung statistisch nicht von fp32 zu
+unterscheiden (INT8 `l2 = 30000`: 0 von 360 Ausfällen, Median 2,4 % gegen 2,3 %; bei `l2 = 1` 19 % gegen 31 %, im Rauschen).
+Das Gelernte passt nur zu dem Bildmodell, mit dem trainiert wurde: Das Modell speichert deshalb `backbone`, der Detektor lädt dasselbe.
+
+---
+
+## ADR-013 — Beschleunigung des Bildmodells auf der Apple Neural Engine (CoreML über ONNX Runtime)
+
+**Entscheidung:** `DinoFeatures` nutzt auf macOS den CoreML-Provider von ONNX Runtime (`MLProgram`, alle Recheneinheiten),
+sobald für die jeweilige Eingabegröße eine übersetzte Sitzung bereitsteht. Bis dahin läuft die CPU weiter (kein Warten).
+Die Größe wird beim Laden festgelegt (`add_free_dimension_override_by_name`), **ohne** das `onnx`-Paket.
+Übersetzt wird je Größe in einem Hintergrund-Thread (`accelerated_session`); der Zwischenspeicher liegt in
+`models/coreml_cache/<H>x<W>/` (ein Verzeichnis je Größe, siehe unten).
+
+**Begründung:** Das Bildmodell ist 98 % der Erkennungszeit. Der erste Versuch („CoreML ist langsamer“) lief auf dem Graphen mit
+dynamischen Formen: 74 Teilgraphen, nur 425 von 648 Knoten unterstützt. Mit festen Formen faltet ONNX Runtime die Formberechnungen
+weg (936 → 650 Knoten, nur noch unterstützte Operationen), und der Provider übernimmt den ganzen Graphen.
+
+**Gemessen** (M3, Merkmale identisch zur CPU, Kosinus 1,0000):
+
+| Eingabe | CPU fp32 (dynamisch) | CPU INT8 | Neural Engine / GPU |
+|---|---|---|---|
+| 140 × 140 | 21 ms | 12,8 ms | 5,2 ms |
+| 168 × 168 | 28 ms | 17 ms | 6,3 ms (nur Neural Engine: 9,3 ms) |
+| 224 × 224 | 47 ms | 28,6 ms | 10,1 ms |
+| ganzes Bild 252 × 448 | 157 ms | – | 26,8 ms |
+
+Gesamtsystem (Demo-Band, gelerntes Objekt, asynchrone Erkennung): 30 fps (= Kamerarate), Latenz 15–18 ms,
+**Alter der Messung 38–39 ms** (CPU/INT8: 70–100 ms), Vorhersagefehler 0,65–0,8 % (gleich).
+
+**Konsequenzen / Grenzen:**
+- **Anlauf:** erste Übersetzung ≈ 31 s je Größe (Training lief dabei 38 s statt 11 s), danach ≈ 6 s aus dem Zwischenspeicher.
+- **Platz:** ≈ **0,4 GB je Eingabegröße** in `models/coreml_cache/` (gitignoriert, jederzeit löschbar; wird neu erzeugt).
+- **Der Zwischenspeicher-Schlüssel berücksichtigt die Größe nicht** (nur das Modell): Ein gemeinsames Verzeichnis lädt für eine andere
+  Größe die falsche Übersetzung und bricht mit einem Formfehler ab. Deshalb ein Verzeichnis je Größe.
+- **Nur fp32:** Die quantisierte INT8-Datei enthält Operationen, die CoreML nicht ausführt; sie bleibt der CPU-Weg (und die Voreinstellung
+  ohne Beschleuniger). Standard-Bildmodell ist daher fp32 mit Beschleuniger, sonst INT8, sonst fp32.
+- **Abschaltbar:** `CTRACK_NO_ACCEL=1` (Tests setzen das; sie laufen auf der CPU).
+- Die Suche im ganzen Bild wird nur noch gedrosselt (jeder 3. Frame), solange sie langsamer als ~45 ms ist; mit Beschleuniger läuft sie auf jedem Frame.

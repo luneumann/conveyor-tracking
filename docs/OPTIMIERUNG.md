@@ -1,6 +1,6 @@
 # Optimierung des gelernten Objekt-Detektors — Recherche und Messungen
 
-Stand: 02.10.2026 · Bezug: ADR-011 (`docs/ARCHITECTURE.md`)
+Stand: 02.10.2026 (Ergebnisse der Umsetzung siehe Abschnitt 6) · Bezug: ADR-011 (`docs/ARCHITECTURE.md`)
 
 **Lesehinweis:** „Gemessen" = auf diesem Rechner (Apple M3, 4 Leistungs- + 4 Effizienzkerne) selbst nachgemessen.
 „Recherche" = aus den verlinkten Quellen, **nicht** hier überprüft. Alle Genauigkeitszahlen stammen von
@@ -65,3 +65,18 @@ sie speichern aber nichts dauerhaft Gelerntes und finden das Objekt nicht von se
 4. **S2 – INT8** gegenmessen (nach deiner Freigabe des Downloads) und nur übernehmen, wenn die Genauigkeit hält.
 5. **Q3 – Drehrichtung**, falls die Anwendung „vorne/hinten“ braucht.
 6. S3/S6/S8 nur, wenn S1+S2 nicht reichen bzw. nach rechtlicher Prüfung (S8).
+
+## 6. Was daraus umgesetzt wurde und was dabei herauskam (02.10.2026)
+
+| Punkt | Ergebnis |
+|---|---|
+| **S1 asynchrone Erkennung** | umgesetzt (ADR-012). 30 fps Kamera-/Ausgaberate unabhängig vom Detektor. Kein Out-of-Sequence-Handling nötig, weil `predict` den Filter nie verändert. Kennzahl „Alter der Messung“ ergänzt. |
+| **S2 INT8** | umgesetzt und gemessen: 1,6–1,7× schneller als fp32 auf der CPU (168 px: 17 statt 28 ms), Genauigkeit im Rauschen gleich. Wird nur auf der CPU genutzt (CoreML kann INT8 nicht). Erzeugt mit `onnxruntime.quantization` in einer **getrennten** Umgebung `.venv-tools` (`onnx` braucht `protobuf ≥ 6.31`, MediaPipe `< 5`). |
+| **S5 Threads** | `intra_op_num_threads = 4` fest. |
+| **S6 Neural Engine** | **funktioniert** (ADR-013), entgegen dem ersten Versuch: 6 ms statt 28 ms bei 168 px, ganzes Bild 27 statt 157 ms. Voraussetzung sind feste Formen, kein `coremltools`/PyTorch nötig. |
+| **Q1 leere Szene aufnehmen** | umgesetzt (Knopf in der Oberfläche; 12 Live-Bilder als echte Gegenbeispiele). Wirkung nur im harten Lookalike-Test gemessen (ADR-011-Nachtrag), nicht mit echten Aufnahmen. |
+| **Training stabilisieren** | *nicht* auf der Liste, aber der größte Befund: Das Training war instabil (31 % Ausfälle, je Lauf 0–52 von 60). `l2 = 300` statt 1 → 3 %. Die früheren „30/30“ waren Glück. |
+| **Q2, Q3, Q4, Q5, Q6, Q7, S3, S7, S8** | offen. Q2 (echte Aufnahmen auswerten) bleibt der wichtigste nächste Schritt. |
+
+**Zeiten sind nur auf ruhigem Rechner vergleichbar:** Zeitweise belegten macOS-Hintergrunddienste (`photolibraryd`, `photoanalysisd`, `appstoreagent`) den
+Rechner (Last > 50). Messungen aus solchen Phasen wurden verworfen bzw. wiederholt; ebenso eine Überlastung durch drei gleichzeitig gestartete eigene Jobs.
