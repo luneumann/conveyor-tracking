@@ -115,3 +115,23 @@ INT8-Backbone gelernt wurde, kann die Neural Engine nicht nutzen (CoreML nimmt n
 
 **Offen:** Fehlalarme auf leeren Bildern (ohne Score-Schwelle: 14 von 38 Bildern mit irgendeinem Fleck); Anteil im echten Detektor mit
 `min_score` noch nicht gemessen. Genauigkeit des weißen Quadrats (IoU 0,80) liegt unter dem des Handys (0,86).
+
+## 8. „Genau" verlor das Teil öfter als „Schnell" — Ursache und Korrektur (02.10.2026)
+
+**Messung:** Echtzeit-Simulation (Aufnahme mit 30 fps in die asynchrone Pipeline gespeist, Handy-Segment, 480 Bilder), Anteil Bilder im Zustand TRACKING:
+
+| Variante | TRACKING | LOST |
+|---|---|---|
+| nur 168 px (Neural Engine) | 95 % | 0 % |
+| nur 336 px (Neural Engine, warm) | 85 % | 10 % |
+| nur 336 px (CPU, ca. 250 ms je Messung) | **0 %** | 89 % |
+| nur 336 px, direkt nach dem Start (Modell lädt noch) | 6 % | – (88 % SEARCHING) |
+| **zweistufig: 168 px verfolgt, 336 px verfeinert** (Neural Engine) | **95 %** | **0 %** |
+| zweistufig auf CPU (Verfeinerung wird übersprungen, da > 80 ms) | 83 % | 4 % |
+
+**Ursachen:** (1) Mit großem Ausschnitt dauert jede Messung länger, die Hand wandert aus dem Suchausschnitt, bevor das Ergebnis da ist. (2) Das Laden
+eines CoreML-Modells hält den GIL 6–14 s und legte die Pipeline lahm, sobald eine neue Größe zum ersten Mal gebraucht wurde.
+
+**Korrektur:** „Genau" = zweistufig: gefunden und verfolgt wird mit 168 px (robust, jedes Bild), die Maske wird danach aus 336 px an derselben Stelle
+neu berechnet (feinere Kontur). Schlägt die Verfeinerung fehl oder ist sie langsamer als 80 ms (z. B. nur CPU), bleibt das grobe Ergebnis.
+Beschleuniger-Größen werden beim Start vorbereitet, bevor die Kamera läuft (mit vorhandenem Cache ca. 25 s, beim allerersten Mal länger).

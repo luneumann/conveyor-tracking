@@ -58,9 +58,9 @@ class Pipeline:
     @classmethod
     def from_config(cls, cfg: dict[str, Any], **overrides: Any) -> Pipeline:
         load_builtins()
-        parts: dict[str, Any] = {
-            "camera": lambda: CAMERAS.create(cfg["camera"]),
+        parts: dict[str, Any] = {   # detector first: its start-up (model compilation) must not let camera frames pile up
             "detector": lambda: DETECTORS.create(cfg["detector"]),
+            "camera": lambda: CAMERAS.create(cfg["camera"]),
             "tracker": lambda: Tracker(KalmanPredictor(**cfg["predictor"]), **cfg["tracker"]),
             "transform": lambda: TRANSFORMS.create(cfg["transform"]),
             "publisher": lambda: PUBLISHERS.create(

@@ -42,7 +42,7 @@ PRESETS = {  # motion preset -> (process_noise, measurement_noise)
     "hand": (300000.0, 4.0),  # hand-held / jerky: follows quickly (see SETUP.md, filter tuning)
 }
 BUILTIN_TEMPLATES = {"synthetic_part"}
-SPEEDS = {"fast": (140, 336), "balanced": (168, 448), "precise": (336, 448)}   # learned detector: (crop edge, global width)
+SPEEDS = {"fast": (140, 0, 336), "balanced": (168, 0, 448), "precise": (168, 336, 448)}   # learned: (tracking crop, refine crop or 0, global width)
 
 
 @dataclass
@@ -250,7 +250,7 @@ class Engine:
                 raise ValueError("Die Bild-Modelle fehlen – in der Oberfläche 'Modelle laden' drücken")
             overrides["detector"] = {"type": "learned", "model_path": str(path), "models_dir": str(self.root / "models"),
                                      "min_score": s.obj_score, "view_size": SPEEDS[s.speed][0],
-                                     "global_width": SPEEDS[s.speed][1]}
+                                     "refine_size": SPEEDS[s.speed][1], "global_width": SPEEDS[s.speed][2]}
         else:
             tpl = self._template_path(s.template)
             if not tpl.exists():
@@ -381,7 +381,7 @@ class Engine:
             predictor.configure(process_noise=q, measurement_noise=r)
             applied["preset"] = live.preset
         if live.speed != applied.get("speed") and hasattr(pipeline.detector, "view_size"):
-            pipeline.detector.view_size, pipeline.detector.global_width = SPEEDS[live.speed]
+            pipeline.detector.configure(*SPEEDS[live.speed])
         applied["speed"] = live.speed
         score = live.obj_score if live.detector == "learned" else live.min_score
         if score != applied.get("score"):

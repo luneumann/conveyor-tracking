@@ -319,3 +319,23 @@ def test_whole_frame_search_is_throttled_only_while_it_is_slow(trained):
     slow, fast = count_searches(0.08), count_searches(0.0)
     assert fast == 12                         # accelerator-like speed: search on every frame
     assert slow <= 5, slow                    # CPU-like speed: every 3rd frame, so the frame loop is not starved
+
+
+@needs_vision
+def test_refine_stage_keeps_tracking_and_never_loses_the_coarse_result(trained, monkeypatch):
+    path, _ = trained
+    det = LearnedObjectDetector(str(path), models_dir=str(MODELS), view_size=168, refine_size=224)
+    det._refine_ms = 0.0
+    img, _ = _scene(1.0, 0.3, 320, 200, 21)
+    d0 = det.detect(Frame(img, 0.0, 0))
+    assert d0 is not None and d0.contour is not None
+    img2, _ = _scene(1.0, 0.3, 330, 205, 22)
+    assert det.detect(Frame(img2, 0.03, 1)) is not None
+    # if the finer view finds nothing, the coarse detection must survive
+    monkeypatch.setattr(det, "_crop_search", lambda img, at=None, vs=None: None if vs == 224 else LearnedObjectDetector._crop_search(det, img, at, vs))
+    assert det._refine(img2, d0) is d0
+    # too slow (CPU-only machines): refinement is skipped without even trying
+    det._refine_ms, det._since_refine_try = 500.0, 0
+    called = []
+    monkeypatch.setattr(det, "_crop_search", lambda *a, **k: called.append(1))
+    assert det._refine(img2, d0) is d0 and not called

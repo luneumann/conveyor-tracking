@@ -80,16 +80,27 @@ def _compile_accelerated(key: tuple[str, int, int], path: Path, cache_root: Path
         _ACCEL[key] = result
 
 
-def accelerated_session(path: Path, h: int, w: int, cache_root: Path):
-    """The ready accelerated session for this shape, or None (and start compiling it in the background)."""
+def accelerated_session(path: Path, h: int, w: int, cache_root: Path, block: bool = False):
+    """The ready accelerated session for this shape, or None (and start compiling it in the background).
+
+    block=True compiles right here instead: loading a CoreML model holds the Python GIL for seconds (6-14 s measured),
+    which stalls the whole pipeline when it happens mid-run, so callers prepare shapes up front (DinoFeatures.warm_up).
+    """
     key = (str(path), h, w)
     with _ACCEL_LOCK:
         entry = _ACCEL.get(key)
-        if entry is None:
+        first = entry is None
+        if first:
             _ACCEL[key] = "pending"
+    if first:
+        if block:
+            _compile_accelerated(key, path, cache_root)
+        else:
             threading.Thread(target=_compile_accelerated, args=(key, path, cache_root), daemon=True,
                              name=f"ctrack-coreml-{h}x{w}").start()
             return None
+    with _ACCEL_LOCK:
+        entry = _ACCEL[key]
     return None if isinstance(entry, str) else entry
 
 
@@ -161,6 +172,12 @@ class DinoFeatures:
         # 4 threads = the performance cores of an M-series chip; 8 is slower because the efficiency cores stall.
         self._sess = _session(models_dir / filename, threads)
         self._input = self._sess.get_inputs()[0].name
+
+    def warm_up(self, shapes: list[tuple[int, int]]) -> None:
+        """Compile the accelerated sessions for these (h, w) now (blocking) instead of stalling the pipeline later."""
+        if self._accelerate:
+            for h, w in shapes:
+                accelerated_session(self.models_dir / self.filename, h, w, self.models_dir / "coreml_cache", block=True)
 
     def extract(self, bgr: np.ndarray) -> np.ndarray:
         """(gh, gw, 384) L2-normalized patch features of an image whose sides are multiples of 14."""
