@@ -350,3 +350,26 @@ def test_refine_is_skipped_without_accelerator(trained, monkeypatch):
     monkeypatch.setattr(det, "_crop_search", lambda *a, **k: called.append(1))
     d = Detection(10, 10, 0.0, 0.9, contour=np.array([[0, 0], [20, 0], [20, 20], [0, 20]], float))
     assert det._refine(np.zeros((100, 100, 3), np.uint8), d) is d and not called
+
+
+@needs_vision
+def test_crop_search_centres_on_the_tracker_hint_and_falls_back_to_the_last_spot(trained):
+    path, _ = trained
+    det = LearnedObjectDetector(str(path), models_dir=str(MODELS))
+    img, _ = _scene(1.0, 0.0, 320, 200, 31)
+    assert det.detect(Frame(img, 0.0, 0)) is not None
+    centres = []
+    real = det._crop_search
+
+    def spy(image, at=None, vs=None):
+        centres.append(None if at is None else (round(at[0]), round(at[1])))
+        return real(image, at, vs)
+
+    det._crop_search = spy
+    det.hint = (330.0, 205.0, 0.0)
+    det._tracked_search(img)
+    assert centres[0] == (330, 205)                          # first try: where the tracker expects it
+    centres.clear()
+    det.hint = (600.0, 100.0, 0.0)                          # wrong prediction far away -> then the last known spot
+    assert det._tracked_search(img) is not None
+    assert centres[0] == (600, 100) and centres[-1] is None

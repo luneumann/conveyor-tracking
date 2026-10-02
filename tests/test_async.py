@@ -180,3 +180,38 @@ def test_advance_never_promotes_or_touches_searching_and_lost(tracker):
     tracker.advance(2.0)
     assert tracker.state is S.LOST
     assert tracker.advance(3.0) is S.LOST
+
+
+def test_hint_travels_with_its_frame_to_the_detector():
+    seen = []
+
+    class Spy(Detector):
+        def detect(self, frame):
+            seen.append((frame.frame_id, self.hint))
+            return None
+
+    ad = AsyncDetector(Spy())
+    ad.submit(_frame(0), (1.0, 2.0, 0.3))
+    time.sleep(0.1)
+    ad.submit(_frame(1))                                   # no hint: must not inherit the previous one
+    time.sleep(0.1)
+    ad.close()
+    assert seen == [(0, (1.0, 2.0, 0.3)), (1, None)]
+
+
+def test_pipeline_hints_the_detector_with_the_prediction_at_the_frame_time():
+    seen = []
+
+    class Spy(Detector):
+        def detect(self, frame):
+            seen.append(self.hint)
+            gt = frame.ground_truth
+            return Detection(gt.x, gt.y, gt.theta, 0.95)
+
+    pipe = _pipeline(Spy())
+    _run(pipe, n=40)
+    pipe.close()
+    hinted = [h for h in seen if h is not None]
+    assert hinted, "no hint was ever passed"
+    # moving 200 px/s along x: the hint must be near the true position of some frame, not lag far behind
+    assert all(95 < h[0] < 100 + 200 * 1.6 and abs(h[1] - 200) < 5 for h in hinted)

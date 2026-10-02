@@ -135,3 +135,20 @@ eines CoreML-Modells hält den GIL 6–14 s und legte die Pipeline lahm, sobald 
 **Korrektur:** „Genau" = zweistufig: gefunden und verfolgt wird mit 168 px (robust, jedes Bild), die Maske wird danach aus 336 px an derselben Stelle
 neu berechnet (feinere Kontur). Schlägt die Verfeinerung fehl oder ist sie langsamer als 80 ms (z. B. nur CPU), bleibt das grobe Ergebnis.
 Beschleuniger-Größen werden beim Start vorbereitet, bevor die Kamera läuft (mit vorhandenem Cache ca. 25 s, beim allerersten Mal länger).
+
+## 9. Suchausschnitt an der Kalman-Vorhersage ausgerichtet (03.10.2026)
+
+Im asynchronen Betrieb gibt die Pipeline dem Detektor je Bild die vom Tracker erwartete Pose zum Belichtungszeitpunkt dieses Bildes mit
+(`Detector.hint`). Der lernende Detektor sucht zuerst dort und erst bei Misserfolg (und wenn der Hinweis vom letzten Fundort abweicht) am letzten Fundort.
+
+Echtzeit-Simulation wie in Abschnitt 8 (Handy-Segment, 480 Bilder, 2 Läufe je Variante auf der CPU, 224 px; Neural Engine 168 px mit Verfeinerung):
+
+| Variante | TRACKING | LOST | Verlust-Episoden |
+|---|---|---|---|
+| 224 px CPU, ohne Hinweis | 76 / 73 % | 3 / 4 % | 1 / 4 |
+| 224 px CPU, mit Hinweis | 76 / 74 % | 1 / 2 % | 2 / 2 |
+| 168+336 Neural Engine, ohne Hinweis | 93 % | 1 % | 1 |
+| 168+336 Neural Engine, mit Hinweis | 95 % | 0 % | 0 |
+
+Der Effekt ist klein und klar im Rauschbereich eines einzelnen Clips (LOST ungefähr halbiert, TRACKING-Anteil unverändert). Er verändert nichts am
+Grundproblem langsamer Messungen: 336 px allein auf der CPU bleibt unbrauchbar (0 % TRACKING).

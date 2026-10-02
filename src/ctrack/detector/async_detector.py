@@ -31,7 +31,7 @@ class AsyncDetector:
     def __init__(self, inner: Detector) -> None:
         self.inner = inner
         self._cv = threading.Condition()
-        self._pending: Frame | None = None
+        self._pending: tuple[Frame, tuple[float, float, float] | None] | None = None
         self._results: deque[DetectionResult] = deque(maxlen=64)
         self._error: BaseException | None = None
         self._stop = False
@@ -40,12 +40,14 @@ class AsyncDetector:
         self._thread = threading.Thread(target=self._run, daemon=True, name="ctrack-detector")
         self._thread.start()
 
-    def submit(self, frame: Frame) -> None:
-        """Hand over a frame (non-blocking). A frame still waiting is replaced by this newer one."""
+    def submit(self, frame: Frame, hint: tuple[float, float, float] | None = None) -> None:
+        """Hand over a frame (non-blocking). A frame still waiting is replaced by this newer one.
+
+        hint: where the tracker expects the object at THIS frame's exposure time (see Detector.hint)."""
         with self._cv:
             if self._pending is not None:
                 self.dropped += 1
-            self._pending = frame
+            self._pending = (frame, hint)
             self._cv.notify()
 
     def poll(self) -> list[DetectionResult]:
@@ -64,9 +66,10 @@ class AsyncDetector:
                 self._cv.wait_for(lambda: self._pending is not None or self._stop)
                 if self._stop:
                     return
-                frame, self._pending = self._pending, None
+                (frame, hint), self._pending = self._pending, None
             t0 = time.perf_counter()
             try:
+                self.inner.hint = hint
                 det = self.inner.detect(frame)
             except BaseException as e:  # surfaced to the main loop by poll()
                 with self._cv:

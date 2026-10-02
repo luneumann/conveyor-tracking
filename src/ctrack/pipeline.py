@@ -40,7 +40,7 @@ class Pipeline:
     def __init__(self, camera: CameraSource, detector: Detector, tracker: Tracker, transform: Transform,
                  publisher: Publisher, include_predicted: bool = True,
                  clock: Callable[[], float] = time.time, async_detect: bool = False,
-                 detection_max_age_s: float = 0.25) -> None:
+                 detection_max_age_s: float = 0.25, use_hint: bool = True) -> None:
         self.camera = camera
         self.detector = detector
         self.tracker = tracker
@@ -53,6 +53,7 @@ class Pipeline:
         # Asynchronous detection decouples camera/output rate from the detector (see detector/async_detector.py).
         self._async = AsyncDetector(detector) if async_detect else None
         self.detection_max_age_s = detection_max_age_s
+        self.use_hint = use_hint
         self._last_det: tuple[float, Detection] | None = None
 
     @classmethod
@@ -87,7 +88,8 @@ class Pipeline:
             if detection is not None:
                 detection_t, detection_new = t, True
         else:
-            self._async.submit(frame)
+            ref = self.tracker.reference_pose(t) if self.use_hint else None
+            self._async.submit(frame, None if ref is None else (ref.x, ref.y, ref.theta))
             for r in self._async.poll():                   # late measurements, fused at their own capture time
                 self.tracker.update(r.detection, r.t_exposure)
                 if r.detection is not None:

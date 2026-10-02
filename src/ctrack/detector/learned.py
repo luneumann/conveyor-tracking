@@ -113,9 +113,20 @@ class LearnedObjectDetector(Detector):
         return fine
 
     # -- Detector -----------------------------------------------------------------------------
+    def _tracked_search(self, img: np.ndarray) -> Detection | None:
+        """Crop search around where the tracker expects the object now; falls back to the last detection's spot."""
+        assert self._last is not None
+        x, y, th, long_side = self._last
+        if self.hint is not None:
+            hx, hy, hth = self.hint
+            det = self._crop_search(img, (hx, hy, hth if math.isfinite(hth) else th, long_side))
+            if det is not None or math.hypot(hx - x, hy - y) < 0.25 * max(self.crop_factor * long_side, 96.0):
+                return det                                   # same spot anyway: a second try would repeat the first
+        return self._crop_search(img)
+
     def detect(self, frame: Frame) -> Detection | None:
         img = frame.image
-        det = self._crop_search(img) if self._last is not None else None
+        det = self._tracked_search(img) if self._last is not None else None
         if det is None:
             self._since_global += 1
             if self._last is not None and self._misses < MAX_MISSES:
