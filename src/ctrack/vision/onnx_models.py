@@ -173,6 +173,10 @@ class DinoFeatures:
         self._sess = _session(models_dir / filename, threads)
         self._input = self._sess.get_inputs()[0].name
 
+    @property
+    def accelerated(self) -> bool:
+        return self._accelerate
+
     def warm_up(self, shapes: list[tuple[int, int]]) -> None:
         """Compile the accelerated sessions for these (h, w) now (blocking) instead of stalling the pipeline later."""
         if self._accelerate:

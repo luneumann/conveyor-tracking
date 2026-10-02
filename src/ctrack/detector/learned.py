@@ -44,6 +44,7 @@ class LearnedObjectDetector(Detector):
         # Two-stage accuracy mode: the object is FOUND and followed with the small view (robust, every frame),
         # then its mask is re-computed from a larger view of the same spot (finer outline). Skipped while too slow.
         self.refine_size = refine_size
+        self.force_refine = False             # tests / benchmarks: refine even without the accelerator
         self._refine_ms = 0.0
         self._since_refine_try = 0
         self.global_interval = max(int(global_interval), 1)
@@ -94,6 +95,8 @@ class LearnedObjectDetector(Detector):
     def _refine(self, img: np.ndarray, det: Detection) -> Detection:
         """Finer outline from a larger view at the found position; the coarse result stays if refining fails or is too slow."""
         if not self.refine_size or self.refine_size <= self.view_size:
+            return det
+        if not (self.dino.accelerated or self.force_refine):   # CPU only: the larger view is too slow to be worth a try
             return det
         if self._refine_ms > REFINE_BUDGET_MS:                # e.g. CPU only: a slow measurement is worse than a coarse one
             self._since_refine_try += 1

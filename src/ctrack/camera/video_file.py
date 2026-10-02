@@ -40,7 +40,7 @@ class VideoFileSource(CameraSource):
         self.timestamps: list[tuple[int, float]] | None = None
         ts_file = timestamps_path(self.path)
         if ts_file.exists():
-            with open(ts_file) as f:
+            with open(ts_file, encoding="utf-8") as f:
                 self.timestamps = [(int(r["frame_id"]), float(r["t_exposure"])) for r in csv.DictReader(f)]
         self._index = 0
         self._wall_start: float | None = None
@@ -84,7 +84,7 @@ class Recorder:
         self.video_path.parent.mkdir(parents=True, exist_ok=True)
         self.fps = fps
         self._writer: cv2.VideoWriter | None = None
-        self._csv_file = open(timestamps_path(self.video_path), "w", newline="")
+        self._csv_file = open(timestamps_path(self.video_path), "w", newline="", encoding="utf-8")
         self._csv = csv.writer(self._csv_file)
         self._csv.writerow(["frame_id", "t_exposure"])
 

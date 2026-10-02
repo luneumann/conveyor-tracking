@@ -7,7 +7,7 @@ latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Ro
 
 ## Schnellstart (ohne Terminal)
 
-**Doppelklick auf `Conveyor Tracking starten.command`.** Beim ersten Mal richtet es die Umgebung ein, danach
+**Doppelklick auf `Conveyor Tracking starten.command` (Mac) bzw. `Conveyor Tracking starten.bat` (Windows, siehe SETUP.md).** Beim ersten Mal richtet es die Umgebung ein, danach
 öffnet sich im Browser die Oberfläche (`http://127.0.0.1:8765`):
 
 1. **Quelle** wählen: *Kamera*, *Demo-Band* (simuliert, ohne Kamera) oder *Aufnahme* → **Starten**.
@@ -29,7 +29,7 @@ Alles Weitere steht in `SETUP.md`. Für Entwickler gibt es zusätzlich die Komma
 ```bash
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest                                              # 137 Tests, ohne Kamera
+pytest                                              # 142 Tests, ohne Kamera
 python -m ctrack.gui                                # Web-Oberfläche (wie der Doppelklick)
 python -m ctrack -c config/synthetic.yaml --auto-lock   # OpenCV-Fenster statt Web-GUI
 python tools/receiver.py                            # Stream-Empfänger (zweites Terminal)

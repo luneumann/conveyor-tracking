@@ -42,7 +42,7 @@ class MetricsLogger:
         if csv:
             path = Path(csv)
             path.parent.mkdir(parents=True, exist_ok=True)
-            self._file = open(path, "w", newline="")
+            self._file = open(path, "w", newline="", encoding="utf-8")
             self._writer = csv_module.DictWriter(self._file, fieldnames=COLUMNS)
             self._writer.writeheader()
         self._pending: deque[dict[str, Any]] = deque()

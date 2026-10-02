@@ -11,7 +11,7 @@ from ctrack.detector import LearnedObjectDetector, NoDetector
 from ctrack.gui.engine import SPEEDS, Settings
 from ctrack.objectmodel import (GRID, VIEW, ObjectModel, _fit_logistic, crop_view, global_view, mask_pose,
                                 train_object_model)
-from ctrack.types import Frame, Pose, wrap_angle
+from ctrack.types import Detection, Frame, Pose, wrap_angle
 from ctrack.vision.onnx_models import PATCH, DinoFeatures, SamSegmenter, vision_models_present
 
 MODELS = ROOT / "models"
@@ -325,7 +325,7 @@ def test_whole_frame_search_is_throttled_only_while_it_is_slow(trained):
 def test_refine_stage_keeps_tracking_and_never_loses_the_coarse_result(trained, monkeypatch):
     path, _ = trained
     det = LearnedObjectDetector(str(path), models_dir=str(MODELS), view_size=168, refine_size=224)
-    det._refine_ms = 0.0
+    det._refine_ms, det.force_refine = 0.0, True
     img, _ = _scene(1.0, 0.3, 320, 200, 21)
     d0 = det.detect(Frame(img, 0.0, 0))
     assert d0 is not None and d0.contour is not None
@@ -339,3 +339,14 @@ def test_refine_stage_keeps_tracking_and_never_loses_the_coarse_result(trained, 
     called = []
     monkeypatch.setattr(det, "_crop_search", lambda *a, **k: called.append(1))
     assert det._refine(img2, d0) is d0 and not called
+
+
+@needs_vision
+def test_refine_is_skipped_without_accelerator(trained, monkeypatch):
+    path, _ = trained
+    det = LearnedObjectDetector(str(path), models_dir=str(MODELS), view_size=168, refine_size=224)
+    assert not det.dino.accelerated                       # tests run with CTRACK_NO_ACCEL=1
+    called = []
+    monkeypatch.setattr(det, "_crop_search", lambda *a, **k: called.append(1))
+    d = Detection(10, 10, 0.0, 0.9, contour=np.array([[0, 0], [20, 0], [20, 20], [0, 20]], float))
+    assert det._refine(np.zeros((100, 100, 3), np.uint8), d) is d and not called

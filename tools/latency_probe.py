@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     med = statistics.median(offsets)
     print(f"\nexposure_offset_ms ≈ {med:.0f}  (median of {len(offsets)}, "
           f"min {min(offsets):.0f}, max {max(offsets):.0f})")
-    print(f"→ set in config:  camera: {{ exposure_offset_ms: {med:.0f} }}")
+    print(f"-> set in config:  camera: {{ exposure_offset_ms: {med:.0f} }}")
     return 0
 
 

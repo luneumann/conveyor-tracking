@@ -19,7 +19,7 @@ import numpy as np
 
 
 def load(path: Path) -> dict[str, np.ndarray]:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
     if not rows:
         raise SystemExit(f"{path}: no rows")

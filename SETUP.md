@@ -1,9 +1,26 @@
 # Setup — Was du selbst tun musst
 
-Der Code ist fertig und getestet (92 Tests grün, synthetische Pipeline und Web-Oberfläche laufen). Die folgenden Schritte
+Der Code ist fertig und getestet (142 Tests grün auf macOS, synthetische Pipeline und Web-Oberfläche laufen). Die folgenden Schritte
 brauchen dich, weil sie Kamera, Downloads oder Entscheidungen betreffen.
 
 ## Erster Start (alles per Klick)
+
+**Voraussetzungen:** Python **3.11 oder 3.12** (3.13+ geht nicht, MediaPipe), eine Webcam, Internet für die einmaligen Modell-Downloads
+(ca. 140 MB von Google und Hugging Face), ca. 1 GB Platz. Läuft auf **macOS (Apple Silicon)** und **Windows 10/11**.
+
+### Windows
+
+**Doppelklick auf `Conveyor Tracking starten.bat`.** Beim ersten Mal richtet sie die Umgebung ein (einige Minuten), danach öffnet sich die
+Oberfläche im Browser. Fehlt Python: von python.org installieren und dabei **„Add python.exe to PATH“** anhaken.
+- Die Windows-Firewall fragt eventuell einmal nach; **Zugriff auf privaten Netzen** reicht (die Oberfläche hört nur auf `127.0.0.1`).
+- Kamera: *Einstellungen → Datenschutz → Kamera* muss Desktop-Apps erlauben; Teams, Zoom oder der Browser dürfen die Kamera gerade nicht nutzen.
+- **Unterschiede zum Mac:** Es gibt keine Neural Engine, das Bildmodell läuft auf der CPU. Rechne mit grob 15–25 Messungen pro Sekunde je nach
+  Rechner (Mac-Werte siehe `docs/OPTIMIERUNG.md`). Die Stufe „Genau" verfeinert dort nicht (die 336-px-Stufe wäre auf der CPU zu langsam);
+  sie verhält sich wie „Ausgewogen". Die Ausgabe an den Roboter läuft trotzdem mit Kamera-Rate.
+- **Stand:** Der Code ist für Windows vorbereitet (UTF-8-Dateien, DirectShow-Kamera, `.bat`-Starter), aber **noch nicht auf einem Windows-Rechner getestet**.
+  Bitte Auffälligkeiten melden.
+
+### macOS
 
 ### 1. Programm starten
 

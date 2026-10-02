@@ -48,7 +48,7 @@ def _apply(cfg: dict[str, Any], user: dict[str, Any]) -> dict[str, Any]:
 def load_config(path: str | Path | None = None, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
     cfg = copy.deepcopy(DEFAULTS)
     if path is not None:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             cfg = _apply(cfg, yaml.safe_load(f) or {})
     if overrides:
         cfg = _apply(cfg, overrides)

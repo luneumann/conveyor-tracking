@@ -156,7 +156,7 @@ class Engine:
     def _load_settings(self) -> Settings:
         s = Settings()
         try:
-            data = json.loads(self.settings_path.read_text())
+            data = json.loads(self.settings_path.read_text(encoding="utf-8"))
             data.pop("record", None)
             data.pop("auto_lock", None)
             data.pop("output_enabled", None)  # never start sending / recording implicitly
@@ -172,7 +172,7 @@ class Engine:
     def _save_settings(self) -> None:
         try:
             self.settings_path.parent.mkdir(parents=True, exist_ok=True)
-            self.settings_path.write_text(json.dumps(asdict(self.settings), indent=1))
+            self.settings_path.write_text(json.dumps(asdict(self.settings), indent=1), encoding="utf-8")
         except OSError:
             pass
 
@@ -416,7 +416,7 @@ class Engine:
         def work() -> None:
             rec = Recorder(base)
             try:
-                with open(base.with_suffix(".log.csv"), "w", newline="") as fh:
+                with open(base.with_suffix(".log.csv"), "w", newline="", encoding="utf-8") as fh:
                     w = csv.writer(fh)
                     w.writerow(["frame_id", "t_exposure", "state", "score", "x", "y", "theta_deg"])
                     for fid, t, jpg, *meta in items:
@@ -425,7 +425,7 @@ class Engine:
                         w.writerow([fid, f"{t:.6f}", *meta])
             finally:
                 rec.close()
-            base.with_suffix(".json").write_text(json.dumps(info, ensure_ascii=False, indent=1))
+            base.with_suffix(".json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
             with self._lock:
                 self.status["last_scene"] = base.name
             self._prune_auto_scenes()

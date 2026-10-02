@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import time
 
 import cv2
@@ -18,11 +19,15 @@ class WebcamSource(CameraSource):
 
     def __init__(self, device: int = 0, width: int = 1280, height: int = 720,
                  exposure_offset_ms: float = 30.0, fps: float | None = None) -> None:
-        self.cap = cv2.VideoCapture(device)
+        # Windows: DirectShow opens in seconds, honours the short buffer and works with most USB cameras; MSMF is the fallback.
+        self.cap = cv2.VideoCapture(device, cv2.CAP_DSHOW) if sys.platform == "win32" else cv2.VideoCapture(device)
+        if sys.platform == "win32" and not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(device)
         if not self.cap.isOpened():
             raise RuntimeError(
-                f"Cannot open webcam {device}. On macOS grant camera access to your terminal app "
-                "(System Settings → Privacy & Security → Camera)."
+                f"Cannot open webcam {device}. macOS: grant camera access to your terminal app "
+                "(System Settings > Privacy & Security > Camera). Windows: Settings > Privacy > Camera must allow desktop apps, "
+                "and no other program (Teams, Zoom, browser) may be using the camera."
             )
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
