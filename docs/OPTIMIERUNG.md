@@ -152,3 +152,33 @@ Echtzeit-Simulation wie in Abschnitt 8 (Handy-Segment, 480 Bilder, 2 Läufe je V
 
 Der Effekt ist klein und klar im Rauschbereich eines einzelnen Clips (LOST ungefähr halbiert, TRACKING-Anteil unverändert). Er verändert nichts am
 Grundproblem langsamer Messungen: 336 px allein auf der CPU bleibt unbrauchbar (0 % TRACKING).
+
+## 10. Fehlalarme: Messung und Gegenmaßnahme (03.10.2026)
+
+**Werkzeug:** `python tools/eval_recording.py tools/eval_labels_demo.json` misst auf einer eigenen Aufnahme Maskengenauigkeit und Fehlalarme je
+Score-Schwelle (Training auf wenigen Bildern, Messung auf anderen). Negative = leere Szene **und** Bilder mit einem anderen Objekt (Verwechslungstest).
+Die Labels-Datei enthält nur Boxen (SAM macht daraus die Referenzmaske), keine Bilder.
+
+**Befund (Handy-Modell, Ganzbildsuche, Score = Erkennungssicherheit):**
+
+| Schwelle | Treffer Handy | Fehlalarm leere Szene (16 Bilder) | Fehlalarm weißes Quadrat im Bild (20 Bilder) |
+|---|---|---|---|
+| 0,5 | 100 % | 6 % | 55 % |
+| 0,6 (bisheriger Standard) | 100 % | 0 % | 50 % |
+| 0,7 | 100 % | 0 % | 25 % |
+| 0,8 | 100 % | 0 % | 5 % |
+| 0,9 | 50 % | 0 % | 0 % |
+
+Für das Quadrat-Modell sieht es ähnlich aus (Verwechslung mit dem Handy: 25 % bei 0,6, 3 % bei 0,7, 0 % bei 0,8).
+Echte Treffer lagen bei 0,84–0,93, Verwechslungen bei 0,60–0,82. **Das Hauptproblem ist also nicht die leere Szene, sondern die Verwechslung
+mit einem anderen, ähnlich gehaltenen Objekt.** (Meine erste Auswertung zeigte 16 % „Fehlalarme" in leeren Szenen; das waren Bilder, in denen das Handy
+teilweise im Bild war — die Labels waren falsch, nicht der Detektor.) Solidität und Rechteckigkeit der Kontur trennen Treffer und Verwechslungen nicht.
+
+**Maßnahme:** Zwei Schwellen. Ein bereits verfolgtes Objekt wird mit `min_score` (0,6) weiterverfolgt (Ausschnittssuche). Eine Ganzbildsuche hat keinen Anker und
+verlangt `min_score + 0,2` (0,8), außer das Ergebnis liegt dort, wo der Tracker das Objekt erwartet (Hinweis, Abschnitt 9).
+
+**Preis:** Neu einlocken geht etwas schwerer. Neural Engine, Echtzeit-Simulation: TRACKING 95 % → 91–93 %, weiterhin 0 % verloren. Auf der CPU waren die
+Simulationen am 03.10. wegen Last auf dem Rechner (Load ≈ 10) nicht belastbar; der Vergleich dort ist offen.
+
+**Bekannte Grenzen:** Das Quadrat hat keine Hauptachse — der Winkel aus den Momenten ist bei quadratischen Masken praktisch zufällig (Median 34° Fehler in
+dieser Messung). Eine Winkelbestimmung aus der Kontur (modulo 90°) fehlt noch.

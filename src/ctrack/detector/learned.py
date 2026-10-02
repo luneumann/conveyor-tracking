@@ -29,14 +29,17 @@ MAX_MISSES = 5          # frames without result before the crop tracker gives up
 class LearnedObjectDetector(Detector):
     def __init__(self, model_path: str, models_dir: str = "models", min_score: float = 0.6,
                  threshold: float = 0.5, crop_factor: float = 1.8, global_width: int = 448,
-                 global_interval: int = 3, view_size: int = 168, refine_size: int = 0) -> None:
+                 global_interval: int = 3, view_size: int = 168, refine_size: int = 0,
+                 acquire_margin: float = 0.2) -> None:
         if not Path(model_path).exists():
             raise FileNotFoundError(f"Gelerntes Objekt nicht gefunden: {model_path}")
         self.model = ObjectModel.load(Path(model_path))
         if not (Path(models_dir) / self.model.backbone).exists():
             raise FileNotFoundError(f"Das Objekt wurde mit {self.model.backbone} gelernt; die Datei fehlt in {models_dir}")
         self.dino = DinoFeatures(Path(models_dir), self.model.backbone)
-        self.min_score = min_score
+        self.min_score = min_score          # keep following an object that is already being tracked (crop search)
+        # A whole-frame search has no anchor, so it must be surer: look-alikes scored 0.6-0.82 where true hits scored 0.84-0.93.
+        self.acquire_margin = acquire_margin
         self.threshold = threshold
         self.crop_factor = crop_factor
         self.global_width = global_width
@@ -53,6 +56,10 @@ class LearnedObjectDetector(Detector):
         self.warm_up()
         self._last: tuple[float, float, float, float] | None = None   # x, y, theta, long side (px)
         self._misses = 0
+
+    @property
+    def acquire_score(self) -> float:
+        return min(self.min_score + self.acquire_margin, 0.95) if self.min_score > 0 else 0.0
 
     def warm_up(self) -> None:
         """Prepare the accelerator for the shapes in use now, so no model loads (multi-second GIL stalls) happen mid-run."""
@@ -88,9 +95,18 @@ class LearnedObjectDetector(Detector):
         h, w = img.shape[:2]
         view, _ = global_view(img, self.global_width)
         mp = mask_pose(self.model.prob_map(self.dino.extract(view)), (w, h), threshold=self.threshold)
-        if mp is None or mp.score < self.min_score or not self.model.aspect_ok(mp.aspect):
+        if mp is None or not self.model.aspect_ok(mp.aspect):
+            return None
+        if mp.score < self.acquire_score and not (mp.score >= self.min_score and self._near_hint(mp.x, mp.y)):
             return None
         return Detection(mp.x, mp.y, mp.theta, mp.score, contour=mp.contour)
+
+    def _near_hint(self, x: float, y: float) -> bool:
+        """A weaker match is fine where the tracker expects the object (it is no 'new' object then)."""
+        if self.hint is None:
+            return False
+        gate = max(2.0 * self._last[3], 150.0) if self._last is not None else 200.0
+        return math.hypot(x - self.hint[0], y - self.hint[1]) < gate
 
     def _refine(self, img: np.ndarray, det: Detection) -> Detection:
         """Finer outline from a larger view at the found position; the coarse result stays if refining fails or is too slow."""

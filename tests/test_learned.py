@@ -373,3 +373,28 @@ def test_crop_search_centres_on_the_tracker_hint_and_falls_back_to_the_last_spot
     det.hint = (600.0, 100.0, 0.0)                          # wrong prediction far away -> then the last known spot
     assert det._tracked_search(img) is not None
     assert centres[0] == (600, 100) and centres[-1] is None
+
+
+@needs_vision
+def test_whole_frame_search_needs_a_higher_score_than_following_but_not_near_the_tracker_hint(trained, monkeypatch):
+    import ctrack.detector.learned as L
+    from ctrack.objectmodel import MaskPose
+
+    path, _ = trained
+    det = LearnedObjectDetector(str(path), models_dir=str(MODELS), min_score=0.6, acquire_margin=0.2)
+    assert abs(det.acquire_score - 0.8) < 1e-9
+    aspect = 0.5 * (det.model.aspect_lo + det.model.aspect_hi)
+    cnt = np.array([[300, 200], [340, 200], [340, 240], [300, 240]], float)
+    score = {"v": 0.7}
+    monkeypatch.setattr(L, "mask_pose", lambda *a, **k: MaskPose(320.0, 220.0, 0.0, cnt, 40.0, aspect, score["v"]))
+    img = np.zeros((360, 640, 3), np.uint8)
+    assert det._global_search(img) is None                 # 0.7 < 0.8, nothing expected here: could be a look-alike
+    det.hint = (330.0, 230.0, 0.0)
+    assert det._global_search(img) is not None             # same 0.7, but exactly where the tracker expects the object
+    det.hint = (600.0, 50.0, 0.0)
+    assert det._global_search(img) is None                 # hint far away: still a stranger
+    score["v"] = 0.85
+    assert det._global_search(img) is not None             # confident enough to acquire anywhere
+    score["v"] = 0.5
+    det.hint = (330.0, 230.0, 0.0)
+    assert det._global_search(img) is None                 # below even the following threshold

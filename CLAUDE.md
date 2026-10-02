@@ -37,6 +37,7 @@ python tools/teach.py --camera 0 --out templates/part.png --mask-auto   # Refere
 python -m ctrack --config config/shape_match.yaml      # Pose per Template-Matching
 python tools/receiver.py --port 5005                   # Referenz-Empfänger
 python tools/analyze.py logs/run.csv                   # Auswerte-Plots
+python tools/eval_recording.py tools/eval_labels_demo.json   # Genauigkeit + Fehlalarme auf einer eigenen Aufnahme
 pytest                                                 # Tests
 ```
 
