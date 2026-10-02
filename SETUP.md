@@ -46,8 +46,8 @@ Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil
 
 Tipps: Je unterschiedlicher die 5 Fotos, desto robuster. Wird fälschlich etwas anderes erkannt: **Mindest-Sicherheit**
 (Feineinstellungen) erhöhen oder mit mehr/anderen Fotos neu anlernen. Ist es zu langsam: **Tempo** auf *Schnell*
-(ca. 20 statt 15 Bilder/s, etwas ungenauer). Grenzen siehe ADR-011 (θ nur modulo 180°, Objekte kleiner als ~12 % der
-Bildbreite werden unzuverlässig, max. ~20 fps).
+(schneller, etwas ungenauer). Grenzen siehe ADR-011 (θ nur modulo 180°, Objekte kleiner als ~12 % der
+Bildbreite werden unzuverlässig).
 
 ### 5b. Flaches Teil per Referenzbild einlernen (Template-Matching)
 
@@ -160,7 +160,9 @@ Das Projekt liegt in einem privaten Repo: https://github.com/luneumann/conveyor-
 - **Gelerntes Objekt nur synthetisch und an einem Foto-Satz geprüft.** Alle Genauigkeitswerte (ADR-011) stammen von einem
   synthetisch komponierten Teil bzw. von Szenen, die aus *einem* Handyfoto zusammengesetzt wurden. Mit echten
   Kameraaufnahmen, anderen Objekten und anderen Hintergründen ist noch nichts gemessen — dafür sind echte Aufnahmen nötig.
-- **Bildrate des gelernten Objekts 11–20 fps** (PRD-Ziel 25): Das Bildmodell läuft auf der CPU (CoreML war langsamer).
+- **Bildrate des gelernten Objekts:** 25 fps bei „Ausgewogen“ nur bei sichtbarem Objekt und ruhigem Rechner (gemessen ohne echte
+  Kamera); in der Oberfläche/Demo und wenn das Objekt fehlt eher 11–20 fps. Das Bildmodell läuft auf der CPU (CoreML war
+  langsamer). Optimierungsmöglichkeiten: `docs/OPTIMIERUNG.md`.
 - **θ des gelernten Objekts nur modulo 180°** (Hauptachse der Maske).
 - **Beim Beenden von Python erscheint gelegentlich** `libc++abi: terminating … recursive_mutex lock failed` aus einer
   nativen Bibliothek (MediaPipe/ONNX). Exit-Code und Ergebnisse sind nicht betroffen; Ursache nicht untersucht.

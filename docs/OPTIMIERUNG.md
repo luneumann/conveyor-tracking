@@ -1,0 +1,67 @@
+# Optimierung des gelernten Objekt-Detektors — Recherche und Messungen
+
+Stand: 02.10.2026 · Bezug: ADR-011 (`docs/ARCHITECTURE.md`)
+
+**Lesehinweis:** „Gemessen" = auf diesem Rechner (Apple M3, 4 Leistungs- + 4 Effizienzkerne) selbst nachgemessen.
+„Recherche" = aus den verlinkten Quellen, **nicht** hier überprüft. Alle Genauigkeitszahlen stammen von
+synthetisch komponierten Szenen, nicht von echten Kameraaufnahmen.
+
+## 1. Wo geht die Zeit hin? (gemessen)
+
+| Messung | Ergebnis |
+|---|---|
+| Erkennung pro verfolgtem Frame (168-px-Ausschnitt) | 33,7 ms, davon **Bildmodell 33,0 ms (98 %)**; Zuschneiden 0,2 · Klassifikator 0,1 · Maske/Pose 0,4 ms |
+| Gesamtpfad, Objekt dauerhaft sichtbar, ruhiger Rechner, vorab gerenderte Bilder | **224 px: 15,1 fps · 168 px: 25,4 fps · 140 px: 32,7 fps** (Positionsfehler median 2,1 / 3,6 / 3,7 px) |
+| Dieselbe Last, aber Oberfläche + Browser laufen parallel, Demo-Quelle, Objekt zeitweise außerhalb des Bildes | 11 / 15,5 / 19,7 fps — die früher genannten Werte sind **durch Last und Demo-Eigenheiten zu pessimistisch** |
+| Bildmodell, ONNX-Runtime-Threads (168 px) | 1: 75 ms · 2: 44 · **4: 27,6** · **6: 27,1** · 8: 33,1 ms (Standard 29,4) — die 4 Effizienzkerne bremsen |
+| Bildmodell, 4 Ausschnitte in einem Aufruf (Batch) | 84 ms je Aufruf = 21 ms je Ausschnitt (−30 %) |
+| CoreML (ONNX-Runtime-Provider) | langsamer als CPU: 74 Teilgraphen, 425 von 648 Knoten unterstützt; MLProgram+statisch 76 ms statt 62 ms bei 224 px |
+
+**Folgerung:** Nur das Bildmodell zählt. Nachbearbeitung zu optimieren lohnt nicht. Hebel sind: das Modell schneller
+machen, es seltener aufrufen, oder die Kamera-/Ausgaberate von ihm entkoppeln.
+
+## 2. Geschwindigkeit — Hebel nach Nutzen/Aufwand
+
+| # | Hebel | Erwarteter Gewinn | Aufwand | Risiko / offene Punkte |
+|---|---|---|---|---|
+| S1 | **Erkennung asynchron zur Kamera**, Kalman verarbeitet die verspätete Messung mit ihrem Aufnahmezeitpunkt (Out-of-Sequence-Messung: Zustand aus dem Verlauf zurückholen, aktualisieren, neu vorwärts rechnen) | Ausgabe- und Kamerarate unabhängig von der Erkennung (30 fps und mehr), **konsistente Latenzkompensation** — genau der Zweck des Projekts | mittel | Erkennung läuft mit ~10–25 Hz; Kalman-Verlauf nötig. [Stone Soup: Kalman-Filter mit OOSM](https://stonesoup.readthedocs.io/en/v1.8/auto_examples/oosm/KalmanFilterOOSMExample.html) |
+| S2 | **INT8-Quantisierung von DINOv2** | auf ARM-CPUs mit Dot-Product-Befehlen 1,8–2,1× (Messstudie, [arXiv 2609.16085](https://arxiv.org/pdf/2609.16085)) → ~15 ms statt ~30 ms | gering (fertige Datei `model_int8.onnx`, 24,4 MB, existiert laut [Hugging Face](https://huggingface.co/onnx-community/dinov2-small/tree/main/onnx)) | Die Quelle misst nicht DINOv2 selbst; Merkmalsqualität muss mit unserer Auswertung gegengeprüft werden. **Download nötig (nicht freigegeben).** |
+| S3 | **Schneller Tracker zwischen den Erkennungen** (OpenCV `TrackerVit`: 767 KB, 4,2 ms auf Apple M2 im Einzel-Thread, liefert Konfidenz zum Erkennen von Verlust — [OpenCV](https://docs.opencv.org/4.9.0/d9/d26/classcv_1_1TrackerVit.html), [opencv_zoo](https://huggingface.co/opencv/opencv_zoo/blob/8a1a70cce93b53bd55cebced420389736ccb27e7/models/object_tracking_vittrack/README.md)) | Erkennung nur jeden 3.–5. Frame → Kamerarate bleibt voll | mittel | liefert nur eine Box, keine Maske/θ; Drift; Modelldateien müssten geladen werden. Mit S1 teils überflüssig |
+| S4 | **Kleinerer Ausschnitt** („Schnell“, 140 px) | schon vorhanden: 32,7 fps | keiner | Winkel etwas ungenauer (Median 3,1° statt 1,9°) |
+| S5 | **ONNX-Runtime-Threads auf 4 begrenzen** | ~0–10 %, weniger Schwankung | sehr gering | Wert hängt vom Rechner ab (hier 4 Leistungskerne) |
+| S6 | **Neural Engine über `coremltools`** (fester Eingang 168×168) | möglicherweise mehrfach schneller; die Neural Engine braucht feste Formen, dynamische sind 25–50× langsamer ([Apple-Forum](https://developer.apple.com/forums/thread/724930), [ORT-Doku](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider)) | hoch | neue Abhängigkeit, Konvertierung; ungeklärt, ob alle Operationen der ViT auf die Neural Engine passen. Der ORT-Weg hat nichts gebracht. Als Orientierung: [EdgeTAM](https://arxiv.org/abs/2501.07256) läuft mit 16 fps auf dem iPhone 15 Pro Max |
+| S7 | **Batch** bei mehreren Ausschnitten | −30 % je Ausschnitt | gering | nur sinnvoll bei mehreren Objekten/Maßstäben |
+| S8 | **DINOv3-ViT-S/16** (21 M Parameter, 384-d) | bessere dichte Merkmale (Qualität, nicht Tempo) | mittel | Download **gesperrt** (Anmeldung, Weitergabe der Kontaktdaten) und eigene [„DINOv3 License“](https://huggingface.co/facebook/dinov3-vits16-pretrain-lvd1689m) — gewerbliche Nutzung rechtlich prüfen. Patchgröße 16 statt 14 |
+
+## 3. Qualität — Hebel
+
+| # | Hebel | Nutzen | Aufwand | Risiko / offene Punkte |
+|---|---|---|---|---|
+| Q1 | **„Leere Szene aufnehmen“**: 3–5 s Live-Bild ohne Objekt als echte Gegenbeispiele (+ Hard-Negative-Mining darauf) | direkt die Idee „alles im Bildfeld außer dem Objekt“, aber mit echten Pixeln statt Ausschnitten aus dem Foto (das hat auf unserem Testsatz geschadet) | gering | muss mit echten Aufnahmen bestätigt werden |
+| Q2 | **Auswertung mit echten Aufnahmen**: Aufnahme abspielen, in wenigen Frames per Klick Referenzmasken (SAM) setzen → IoU, Schwerpunkt-, Winkelfehler, Erkennungsrate | Voraussetzung für jede ernsthafte Optimierung; ersetzt die synthetischen Zahlen | mittel | braucht von dir Aufnahmen verschiedener Objekte |
+| Q3 | **Drehrichtung (θ nur modulo 180°)**: zusätzlicher Kopf, der die Position entlang der Achse aus den Patch-Merkmalen vorhersagt (Trainingsbeschriftung ergibt sich aus der bekannten Augmentations-Drehung); sein Vorzeichen löst ±180° auf. Optional ein zweiter Klick „Vorderseite“ beim Anlernen | eindeutiges θ bei asymmetrischen Objekten | mittel | funktioniert nur, wenn das Objekt wirklich eine erkennbare Vorder-/Rückseite hat. Klassisch löst man das Problem mit einer zweiten Suchstufe, die beide Kandidaten (θ und θ+180°) prüft — die gefundenen Quellen dazu sind Patente und nur Hinweise |
+| Q4 | **Leichte Kippung** (Homographie-Augmentierung) | robuster bei „leicht gedreht“ im Raum | gering | Wirkung nur mit echten Aufnahmen prüfbar |
+| Q5 | **Schärfere Maske**: Konturverfeinerung im Ausschnitt in voller Auflösung (z. B. GrabCut, vom Klassifikator vorbelegt) oder kantenbewusstes Glätten; [EdgeSAM](https://arxiv.org/pdf/2312.06660) (laut Autoren >30 fps auf dem iPhone 14, Eingabeaufforderungen in der Destillation) als schnelleres SAM zum Verfeinern | Positionsfehler von ~3 % der Objektgröße weiter senken | mittel | aktuelle Genauigkeit reicht für den Prototyp vermutlich; zunächst Q2 |
+| Q6 | **Selbstlernen im Betrieb**: sichere Treffer als zusätzliche Beispiele nachtrainieren | passt sich Licht/Hintergrund an | mittel | Drift-Gefahr (Fehler verstärken sich); nur mit Kontrolle |
+| Q7 | **Messrauschen im Kalman an Maskengröße/Konfidenz koppeln** | ruhigere Pose, weniger Geschwindigkeits-Jitter | gering | Parameter erst mit echten Daten sinnvoll einstellbar |
+
+## 4. Einordnung gegenüber der Literatur
+
+Der gewählte Ansatz (eingefrorene DINOv2-Merkmale + einfacher Kopf, SAM für die Maske) entspricht dem, was die
+Few-Shot-Literatur verwendet: [Matcher](https://arxiv.org/pdf/2305.13310) kombiniert DINOv2 (ViT-L/14) und SAM
+trainingsfrei und schlägt [PerSAM](https://arxiv.org/pdf/2305.13310) deutlich; für DINOv2 gilt, dass einfaches
+Linear-Probing mit aufwendigeren Anpassungen mithalten kann. Diese Verfahren laufen mit großen Modellen auf Server-GPUs;
+unsere Variante tauscht Genauigkeit gegen CPU-Tempo (ViT-S, 168-px-Ausschnitte).
+Für das Folgen nach einem Klick gibt es End-to-End-Alternativen ([EdgeTAM](https://arxiv.org/abs/2501.07256):
+SAM-2-Qualität, 22× schneller als SAM 2, Video-Version bereits in [Transformers](https://huggingface.co/docs/transformers/model_doc/edgetam_video)),
+sie speichern aber nichts dauerhaft Gelerntes und finden das Objekt nicht von selbst wieder.
+
+## 5. Empfohlene Reihenfolge
+
+1. **Q2 – echte Aufnahmen und Messwerkzeug.** Ohne sie sind alle weiteren Entscheidungen Raten.
+2. **Q1 – leere Szene aufnehmen** (klein, direkt nutzbar).
+3. **S1 – asynchrone Erkennung mit verspäteter Messung im Kalman.** Größter Hebel auf Kamera-/Ausgaberate und der Kern
+   der Latenzkompensation.
+4. **S2 – INT8** gegenmessen (nach deiner Freigabe des Downloads) und nur übernehmen, wenn die Genauigkeit hält.
+5. **Q3 – Drehrichtung**, falls die Anwendung „vorne/hinten“ braucht.
+6. S3/S6/S8 nur, wenn S1+S2 nicht reichen bzw. nach rechtlicher Prüfung (S8).

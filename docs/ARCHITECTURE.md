@@ -264,12 +264,15 @@ SIFT/ORB-Merkmale (brauchen Textur; dunkle glatte Objekte fallen durch); Farbseg
 | Position, ganzes Bild (30 Szenen, Größe ×0,4–1,5, Drehung ±25°, Hintergrund mit Hand und Gesicht) | Median 2,5 %, p90 7,0 %, max 8,8 % der Objektgröße; 30/30 gefunden |
 | Winkel | Median 2,7°, p90 8° |
 | Ohne Störformen und Seitenverhältnis (Zwischenstand) | p90 78 %: Verwechslung mit Hintergrund; roter Kreis wurde mit 92 % als Objekt erkannt |
-| Gesamtpfad (Quelle + Erkennung + Tracker + Kalman) | 11 fps „Genau“ (224 px) · 15,5 fps „Ausgewogen“ (168 px) · 19,7 fps „Schnell“ (140 px); Positionsfehler 1,9 / 3,7 / 4,6 px |
+| Gesamtpfad, Objekt dauerhaft sichtbar, ruhiger Rechner, vorab gerenderte Bilder | **15,1 fps „Genau“ (224 px) · 25,4 fps „Ausgewogen“ (168 px) · 32,7 fps „Schnell“ (140 px)**; Positionsfehler median 2,1 / 3,6 / 3,7 px |
+| Gesamtpfad mit Demo-Quelle, parallel laufender Oberfläche/Browser und zeitweise fehlendem Objekt | 11 / 15,5 / 19,7 fps (durch Last und die langsame Suche im ganzen Bild bei fehlendem Objekt) |
 | Backbone allein | 224 px: 62 ms · 168 px: 41 ms · 140 px: 31 ms · ganzes Bild 448×252: 157 ms |
 
 **Grenzen / Entscheidungen:**
-- **Bildrate:** das PRD-Ziel 25 fps wird nicht erreicht (max. ~20 fps). CoreML als ONNX-Provider war langsamer als die CPU.
-  Möglicher Hebel: int8-quantisiertes DINOv2 (24 MB, nicht geladen) oder Erkennung asynchron zur Kamera.
+- **Bildrate:** 98 % der Erkennungszeit ist das Bildmodell. „Ausgewogen“ (168 px) erreicht bei sichtbarem Objekt und ruhigem
+  Rechner 25,4 fps — das PRD-Ziel nur knapp; bei Last, in der Demo und bei fehlendem Objekt (Suche im ganzen Bild, ~150 ms)
+  weniger. Mit echter Kamera noch nicht gemessen. CoreML als ONNX-Provider war langsamer als die CPU. Hebel und Quellen:
+  `docs/OPTIMIERUNG.md`.
 - **θ nur modulo 180°:** Ein länglicher Körper hat eine Hauptachse ohne Richtung. θ wird gegen den Vorwert entfaltet
   (keine Sprünge), aber „oben/unten“ ist nicht unterscheidbar.
 - **Objektgröße:** unter ~12 % der Bildbreite (< ~150 px bei 1280 px) werden Treffer unzuverlässig.

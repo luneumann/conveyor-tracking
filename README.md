@@ -80,5 +80,5 @@ Publisher bleiben unverändert.
 ## Docs
 
 - [PRD](docs/PRD.md) · [Architektur-Entscheidungen](docs/ARCHITECTURE.md) · [System Design](docs/SYSTEM-DESIGN.md)
-- [Tests](docs/TESTING.md) · [Demo-Handoff](docs/DEMO-HANDOFF.md) · [Demo-Checkliste](docs/DEMO-CHECKLIST.md)
+- [Optimierung](docs/OPTIMIERUNG.md) · [Tests](docs/TESTING.md) · [Demo-Handoff](docs/DEMO-HANDOFF.md) · [Demo-Checkliste](docs/DEMO-CHECKLIST.md)
 - [SETUP — was du selbst tun musst](SETUP.md)
