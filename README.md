@@ -20,6 +20,9 @@ latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Ro
 3. **Tracking starten** (oder „Automatisch einlocken“). Kennzahlen (Bildrate, Latenz, Vorhersagefehler)
    erscheinen live mit Zielwerten.
 4. Optional: **Pose per UDP senden**, **Video aufzeichnen**, Feineinstellungen.
+5. **Fehlersuche ohne Aufzeichnen:** Die GUI führt still die letzten 15 s mit. **Szene sichern** speichert sie per Klick;
+   geht ein verfolgtes Objekt verloren, geschieht das automatisch (`recordings/szene_auto_…`, die letzten 10 bleiben).
+   Die Clips sind als Quelle *Aufnahme* abspielbar und enthalten ein `.log.csv` mit Zustand, Score und Pose je Bild.
 
 Alles Weitere steht in `SETUP.md`. Für Entwickler gibt es zusätzlich die Kommandozeile:
 

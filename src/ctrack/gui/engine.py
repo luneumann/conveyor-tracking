@@ -7,6 +7,8 @@ loop re-reads every frame and through the command queue (lock / reset).
 
 from __future__ import annotations
 
+import collections
+import csv
 import json
 import math
 import queue
@@ -31,7 +33,7 @@ from ..registry import load_builtins
 from ..objectmodel import ObjectModel, train_object_model
 from ..teach import save_template
 from ..vision.onnx_models import DinoFeatures, SamSegmenter, accelerator_status, vision_models_present
-from ..types import TrackState
+from ..types import Frame, TrackState
 from ..visualizer import OverlayRenderer
 
 NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,40}$")
@@ -62,6 +64,7 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 5005
     record: bool = False
+    auto_scene: bool = True         # save the last seconds automatically when a locked object is lost
 
     def update(self, data: dict[str, Any]) -> set[str]:
         """Apply validated changes; returns the names of the fields that actually changed."""
@@ -105,6 +108,11 @@ class Settings:
 
 #: Settings that need a camera/detector restart when changed while running.
 RESTART_KEYS = {"source", "device", "recording", "detector", "template", "learned"}
+
+
+RING_S = 15.0           # seconds kept for "Szene sichern"
+AUTO_SCENE_GAP_S = 30.0  # at most one automatic clip per this many seconds
+MAX_AUTO_SCENES = 10
 
 
 def _num(v: float) -> float | None:
@@ -209,7 +217,7 @@ class Engine:
             self._frame_cv.notify_all()
 
     def command(self, name: str) -> None:
-        if name not in ("lock", "reset"):
+        if name not in ("lock", "reset", "save_scene"):
             raise ValueError("unknown command")
         self._commands.put(name)
 
@@ -267,6 +275,9 @@ class Engine:
         null_publisher = NullPublisher()
         applied: dict[str, Any] = {}
         sent = 0
+        ring: collections.deque = collections.deque()   # last RING_S seconds of raw frames (JPEG) for "Szene sichern"
+        prev_state = TrackState.SEARCHING
+        last_auto = 0.0
         try:
             cfg = self._build_config(s)
             pipeline = Pipeline.from_config(cfg)
@@ -300,7 +311,10 @@ class Engine:
                         cmd = self._commands.get_nowait()
                     except queue.Empty:
                         break
-                    tracker.request_lock() if cmd == "lock" else tracker.reset()
+                    if cmd == "save_scene":
+                        self._save_scene(ring, "manuell")
+                    else:
+                        tracker.request_lock() if cmd == "lock" else tracker.reset()
                 if live.auto_lock:
                     tracker.auto_lock_step(time.time(), 1.0, immediate=not pipeline.camera.is_live)
 
@@ -313,6 +327,13 @@ class Engine:
                 if recorder is not None:
                     recorder.write(step.frame)
                 metrics.log(step)
+                if live.source != "replay":
+                    self._ring_add(ring, step)
+                    if live.auto_scene and prev_state in (TrackState.TRACKING, TrackState.COASTING) \
+                            and step.state is TrackState.LOST and time.time() - last_auto > AUTO_SCENE_GAP_S:
+                        last_auto = time.time()
+                        self._save_scene(ring, "verloren")
+                prev_state = step.state
                 stats = metrics.stats()
                 t = step.frame.t_exposure
                 img = renderer.render(step, stats, tracker.reference_pose(t), tracker.reacquire_radius_at(t))
@@ -368,6 +389,56 @@ class Engine:
                 pipeline.detector.min_score = score
             applied["score"] = score
 
+    # ---- scene buffer ("black box") ---------------------------------------------------------
+    @staticmethod
+    def _ring_add(ring: collections.deque, step) -> None:
+        f = step.frame
+        ok, buf = cv2.imencode(".jpg", f.image, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        if not ok:
+            return
+        pose, det = step.pose, step.detection
+        ring.append((f.frame_id, f.t_exposure, buf.tobytes(), step.state.value,
+                     det.confidence if det else "", pose.x if pose else "", pose.y if pose else "",
+                     math.degrees(pose.theta) if pose else ""))
+        while ring and f.t_exposure - ring[0][1] > RING_S:
+            ring.popleft()
+
+    def _save_scene(self, ring: collections.deque, reason: str) -> None:
+        """Write the buffered seconds as <recordings>/szene_*.mp4 (+ .csv timestamps, .log.csv states) in the background."""
+        items = list(ring)
+        if len(items) < 5:
+            return
+        stamp = time.strftime("%Y%m%d_%H%M%S")
+        base = self.recordings_dir / f"szene_{'auto_' if reason == 'verloren' else ''}{stamp}"
+        info = {"reason": reason, **{k: v for k, v in asdict(self.settings).items() if k in
+                ("source", "detector", "learned", "speed", "obj_score", "min_score", "template")}}
+
+        def work() -> None:
+            rec = Recorder(base)
+            try:
+                with open(base.with_suffix(".log.csv"), "w", newline="") as fh:
+                    w = csv.writer(fh)
+                    w.writerow(["frame_id", "t_exposure", "state", "score", "x", "y", "theta_deg"])
+                    for fid, t, jpg, *meta in items:
+                        img = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_COLOR)
+                        rec.write(Frame(img, t, fid))
+                        w.writerow([fid, f"{t:.6f}", *meta])
+            finally:
+                rec.close()
+            base.with_suffix(".json").write_text(json.dumps(info, ensure_ascii=False, indent=1))
+            with self._lock:
+                self.status["last_scene"] = base.name
+            self._prune_auto_scenes()
+
+        threading.Thread(target=work, daemon=True, name="ctrack-save-scene").start()
+
+    def _prune_auto_scenes(self) -> None:
+        """Keep the newest MAX_AUTO_SCENES automatic clips (only files this feature created)."""
+        clips = sorted(self.recordings_dir.glob("szene_auto_*.mp4"))
+        for old in clips[:-MAX_AUTO_SCENES]:
+            for ext in (".mp4", ".csv", ".log.csv", ".json"):
+                old.with_suffix("").with_name(old.stem + ext).unlink(missing_ok=True)
+
     def _publish_status(self, step, stats, tracker, frames: int, sent: int, sending: bool, recording: bool) -> None:
         pose = step.pose
         vel = step.velocity
@@ -393,7 +464,7 @@ class Engine:
         return {"running": False, "starting": False, "error": None, "state": "IDLE", "lock_pending": False,
                 "detected": False, "score": None, "fps": None, "latency_p50": None, "latency_p95": None, "perception_p95": None,
                 "pred_err_p95": None, "pred_err_pct": None, "pose": None, "velocity": None, "frame_size": None,
-                "frames": 0, "sending": False, "packets_sent": 0, "recording": False, "csv": None,
+                "frames": 0, "sending": False, "packets_sent": 0, "recording": False, "csv": None, "last_scene": None,
                 "session": None, "last_run": None}
 
     def download_hand_model(self) -> None:
@@ -624,8 +695,14 @@ class Engine:
         return self.templates_dir / f"{name}.png"
 
     def list_templates(self) -> list[dict[str, Any]]:
-        files = sorted(self.templates_dir.glob("*.png"))
-        sig = tuple((p.name, p.stat().st_mtime_ns) for p in files)
+        files, mtimes = [], {}
+        for p in sorted(self.templates_dir.glob("*.png")):
+            try:
+                mtimes[p] = p.stat().st_mtime_ns
+            except FileNotFoundError:      # deleted between listing and stat (e.g. by the user in Finder)
+                continue
+            files.append(p)
+        sig = tuple((p.name, mtimes[p]) for p in files)
         if self._tpl_cache is not None and self._tpl_cache[0] == sig:
             return self._tpl_cache[1]
         out = []
@@ -637,7 +714,7 @@ class Engine:
                 continue
             out.append({"name": p.stem, "width": int(img.shape[1]), "height": int(img.shape[0]),
                         "has_mask": p.with_name(p.stem + "_mask.png").exists(),
-                        "builtin": p.stem in BUILTIN_TEMPLATES, "version": p.stat().st_mtime_ns})
+                        "builtin": p.stem in BUILTIN_TEMPLATES, "version": mtimes[p]})
         self._tpl_cache = (sig, out)
         return out
 

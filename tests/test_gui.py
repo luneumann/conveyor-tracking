@@ -307,3 +307,46 @@ def test_empty_scene_capture_collects_frames_and_can_be_cleared(gui):
     code, d = gui.post("/api/learn/empty/clear")
     assert code == 200 and d["learn"]["empty"] == 0
     gui.post("/api/session", {"action": "stop"})
+
+
+def test_save_scene_writes_the_buffered_seconds(gui):
+    gui.post("/api/settings", {"source": "demo", "auto_lock": False})
+    gui.post("/api/session", {"action": "start"})
+    gui.wait(lambda st: st["running"] and st["frames"] >= 20)
+    assert gui.post("/api/command", {"name": "save_scene"})[0] == 200
+    st = gui.wait(lambda st: st.get("last_scene"))
+    base = gui.root / "recordings" / st["last_scene"]
+    for ext in (".mp4", ".csv", ".log.csv", ".json"):
+        assert base.with_suffix(ext).exists() or (gui.root / "recordings" / (st["last_scene"] + ext)).exists(), ext
+    cap = cv2.VideoCapture(str(base.with_suffix(".mp4")))
+    assert cap.get(cv2.CAP_PROP_FRAME_COUNT) >= 5
+    assert json.loads(base.with_suffix(".json").read_text())["reason"] == "manuell"
+    assert st["last_scene"] in gui.req("GET", "/api/status")[1].get("last_scene", "")
+
+
+def test_old_automatic_scenes_are_pruned(gui):
+    from ctrack.gui.engine import MAX_AUTO_SCENES
+    d = gui.root / "recordings"
+    d.mkdir()
+    for i in range(MAX_AUTO_SCENES + 3):
+        for ext in (".mp4", ".csv", ".log.csv", ".json"):
+            (d / f"szene_auto_20260101_0000{i:02d}{ext}").write_text("x")
+    (d / "szene_20260101_000000.mp4").write_text("x")          # manual clip must never be removed
+    Engine(gui.root)._prune_auto_scenes()
+    assert len(list(d.glob("szene_auto_*.mp4"))) == MAX_AUTO_SCENES
+    assert not (d / "szene_auto_20260101_000000.json").exists() and (d / "szene_20260101_000000.mp4").exists()
+
+
+def test_template_list_survives_a_file_vanishing_mid_listing(gui, monkeypatch):
+    from pathlib import Path
+    real = Path.stat
+
+    def flaky(self, *a, **k):
+        if self.name == "ghost.png":
+            raise FileNotFoundError(self)
+        return real(self, *a, **k)
+
+    (gui.root / "templates" / "ghost.png").write_bytes(b"x")
+    monkeypatch.setattr(Path, "stat", flaky)
+    names = [t["name"] for t in Engine(gui.root).list_templates()]
+    assert "synthetic_part" in names and "ghost" not in names

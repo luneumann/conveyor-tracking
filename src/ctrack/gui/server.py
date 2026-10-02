@@ -214,13 +214,24 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
 
+class QuietServer(ThreadingHTTPServer):
+    """A browser tab that closes or reloads resets its connections; that is normal, not an error worth a traceback."""
+
+    daemon_threads = True
+
+    def handle_error(self, request, client_address) -> None:
+        if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
     engine = Engine(root)
     server = None
     for p in range(port, port + 10):
         try:
             Handler.engine, Handler.port = engine, p
-            server = ThreadingHTTPServer(("127.0.0.1", p), Handler)
+            server = QuietServer(("127.0.0.1", p), Handler)
             server.daemon_threads = True
             break
         except OSError:

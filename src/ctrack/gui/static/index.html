@@ -298,6 +298,8 @@ a { color: var(--accent); }
         <div class="field"><label for="inPort">Port</label><input type="number" id="inPort" value="5005" min="1" max="65535" style="width:100px"></div>
       </div>
       <label class="switch" style="margin-top:14px"><input type="checkbox" id="swRec"><span class="track"></span><span class="lbl"><b>Video aufzeichnen</b><span>Speichert in „recordings“, später als Quelle „Aufnahme“ abspielbar</span></span></label>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" id="swScene"><span class="track"></span><span class="lbl"><b>Bei Verlust automatisch sichern</b><span>Die letzten 15 s werden still mitgeführt; geht das Objekt verloren, landen sie als „szene_auto_…“ in „recordings“</span></span></label>
+      <button class="btn block" id="btnScene" style="margin-top:12px">Szene sichern (letzte 15 s)</button>
     </div>
 
     <div class="card">
@@ -326,6 +328,7 @@ a { color: var(--accent); }
 <div id="toast" role="status" aria-live="polite"></div>
 
 <script>
+let lastScene = null;
 "use strict";
 const $ = (s) => document.querySelector(s);
 const STATE_LABEL = { IDLE: "Bereit", SEARCHING: "Suche Objekt", TRACKING: "Verfolge", COASTING: "Verdeckt – Vorhersage", LOST: "Verloren" };
@@ -440,6 +443,9 @@ function render() {
   if (idle($("#inPort"))) $("#inPort").value = st.port;
   $("#outInfo").textContent = st.output_enabled && running ? `${S.packets_sent} Pakete → ${st.host}:${st.port}` : st.output_enabled ? "Sendet, sobald die Kamera läuft" : "An Roboter / Empfänger";
   if (idle($("#swRec"))) $("#swRec").checked = st.record;
+  if (idle($("#swScene"))) $("#swScene").checked = st.auto_scene;
+  $("#btnScene").disabled = !S.running || st.source === "replay";
+  if (S.last_scene && S.last_scene !== lastScene) { if (lastScene !== null) toast("Szene gesichert: " + S.last_scene); lastScene = S.last_scene; } else if (lastScene === null) lastScene = S.last_scene || "";
 
   // fine settings
   if (idle($("#selPreset"))) $("#selPreset").value = st.preset;
@@ -524,6 +530,8 @@ $("#btnLock").onclick = () => act(async () => {
 });
 $("#swAuto").onchange = (e) => setSetting({ auto_lock: e.target.checked });
 $("#swOut").onchange = (e) => setSetting({ output_enabled: e.target.checked });
+$("#swScene").onchange = (e) => setSetting({ auto_scene: e.target.checked });
+$("#btnScene").onclick = () => act(() => api("/api/command", { name: "save_scene" }));
 $("#swRec").onchange = (e) => setSetting({ record: e.target.checked });
 $("#inHost").onchange = (e) => setSetting({ host: e.target.value.trim() || "127.0.0.1" });
 $("#inPort").onchange = (e) => setSetting({ port: Number(e.target.value) });
