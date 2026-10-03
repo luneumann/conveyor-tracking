@@ -384,6 +384,7 @@ a { color: var(--accent); }
 
 <script>
 let lastScene = null;
+let pendingStart = false;
 "use strict";
 const $ = (s) => document.querySelector(s);
 const STATE_LABEL = { IDLE: "Bereit", SEARCHING: "Suche Objekt", TRACKING: "Verfolge", COASTING: "Verdeckt – Vorhersage", LOST: "Verloren" };
@@ -434,7 +435,8 @@ function render() {
   const ph = $("#placeholder");
   ph.hidden = teaching || (running && S.frames > 0);
   if (!running) { $("#phTitle").textContent = S.error ? "Konnte nicht starten" : "Kamera ist aus"; $("#phText").textContent = S.error ? "Siehe Meldung oben." : "Quelle wählen und auf „Starten“ drücken."; }
-  const loading = running && S.frames === 0 && !teaching;
+  if (pendingStart && ((running && S.frames > 0) || S.error)) pendingStart = false;
+  const loading = (running || pendingStart) && S.frames === 0 && !teaching;
   $("#phIdle").hidden = loading;
   setLoader(loading, (S.accel && S.accel.pending && S.accel.pending.length) ? "Die Neural Engine wird auf deine Bildgröße übersetzt – das passiert nur beim ersten Mal (ca. 30 s je Größe)." : "");
   if (running && S.session && streamSession !== S.session) {
@@ -603,7 +605,11 @@ $("#selRec").onchange = (e) => setSetting({ recording: e.target.value });
 $("#btnVision").onclick = async () => { const b = $("#btnVision"); b.disabled = true; b.textContent = "Lädt (ca. 133 MB) …"; try { S = await api("/api/vision-models"); toast("Modelle geladen"); render(); } catch (e) { toast(e.message, true); } b.disabled = false; b.textContent = "Modelle laden"; };
 $("#btnLearn").onclick = () => startLearn();
 $("#btnModel").onclick = async () => { const b = $("#btnModel"); b.disabled = true; b.textContent = "Lädt …"; try { S = await api("/api/hand-model"); toast("Handmodell geladen"); render(); } catch (e) { toast(e.message, true); } b.disabled = false; b.textContent = "Handmodell laden"; };
-$("#btnStart").onclick = () => act(() => api("/api/session", { action: S.running ? "stop" : "start" }));
+$("#btnStart").onclick = () => {
+  const starting = !S.running;
+  pendingStart = starting; if (starting) { setLoader(true, ""); $("#placeholder").hidden = false; $("#phIdle").hidden = true; }   // feedback at once, before the server answers
+  act(() => api("/api/session", { action: starting ? "start" : "stop" })).finally(() => { if (!starting) pendingStart = false; });
+};
 $("#btnLock").onclick = () => act(async () => {
   const tracking = S.running && S.state !== "SEARCHING";
   await api("/api/command", { name: tracking || S.lock_pending ? "reset" : "lock" });

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 
 import cv2
@@ -102,6 +103,25 @@ def accelerated_session(path: Path, h: int, w: int, cache_root: Path, block: boo
     with _ACCEL_LOCK:
         entry = _ACCEL[key]
     return None if isinstance(entry, str) else entry
+
+
+def prewarm(models_dir: Path, shapes: list[tuple[int, int]] | None = None) -> float:
+    """Load the accelerated sessions for the usual input sizes (168 / 252x448 / 336) once, before the app serves.
+
+    Creating a CoreML session holds the Python GIL for seconds (up to ~14 s measured), freezing every thread, the web
+    server included. Doing it up front, in parallel, once per app launch means Start later finds the sessions ready
+    (they live for the whole process) and the interface never freezes mid-use. Returns the seconds spent."""
+    if not coreml_available() or not (models_dir / DINO).exists():
+        return 0.0
+    shapes = shapes or [(168, 168), (252, 448), (336, 336)]
+    t0 = time.perf_counter()
+    threads = [threading.Thread(target=accelerated_session, args=(models_dir / DINO, h, w, models_dir / "coreml_cache", True))
+               for h, w in shapes]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    return time.perf_counter() - t0
 
 
 def accelerator_status() -> dict:

@@ -75,6 +75,8 @@ auf der CPU weiter, du musst nicht warten (die Oberfläche zeigt „Neural Engin
 `models/coreml_cache/` belegt **ca. 0,4 GB je Bildgröße** und darf jederzeit gelöscht werden. Abschalten: Umgebungsvariable
 `CTRACK_NO_ACCEL=1`.
 
+**Startzeit:** Die Neural Engine wird einmal je Programmstart vorbereitet, bevor die Oberfläche erscheint (im Terminal-Fenster steht „Neural Engine wird vorbereitet …“; ca. 20 s, beim allerersten Mal bis zu einer Minute). Danach startet „Starten“ in unter einer Sekunde. Der Grund: Das Laden eines Neural-Engine-Modells blockiert das Programm für Sekunden, das soll nicht mitten in der Bedienung passieren.
+
 **Bereits angelernte Objekte neu anlernen:** Objekte, die vor dem 02.10.2026 angelernt wurden (z. B. `objekt_1`), sind mit
 der damaligen, zu schwachen Regularisierung trainiert und teils unzuverlässig (Ausfälle je nach Training 0–87 %).
 Die Fotos werden nicht gespeichert, nur das Gelernte — bitte einmal neu anlernen.

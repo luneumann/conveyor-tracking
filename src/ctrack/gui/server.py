@@ -227,6 +227,10 @@ class QuietServer(ThreadingHTTPServer):
 
 def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
     engine = Engine(root)
+    from ..vision.onnx_models import coreml_available, prewarm
+    if coreml_available():
+        print("Neural Engine wird vorbereitet (einmal je Programmstart, beim allerersten Mal bis zu einer Minute) …", flush=True)
+        print(f"Fertig nach {prewarm(root / 'models'):.0f} s.", flush=True)
     server = None
     for p in range(port, port + 10):
         try:
