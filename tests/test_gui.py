@@ -302,8 +302,8 @@ def test_empty_scene_capture_collects_frames_and_can_be_cleared(gui):
     gui.wait(lambda s: s["running"] and s["frames"] > 3)
     assert gui.post("/api/learn/empty")[0] == 200
     assert gui.post("/api/learn/empty")[0] == 400                    # already capturing
-    st = gui.wait(lambda s: s["learn"]["empty"] >= 12 and not s["learn"]["empty_capturing"], timeout=20)
-    assert st["learn"]["empty"] == 12
+    st = gui.wait(lambda s: s["learn"]["empty"] >= 3 and not s["learn"]["empty_capturing"], timeout=30)
+    assert 3 <= st["learn"]["empty"] <= 20
     code, d = gui.post("/api/learn/empty/clear")
     assert code == 200 and d["learn"]["empty"] == 0
     gui.post("/api/session", {"action": "stop"})

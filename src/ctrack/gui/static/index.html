@@ -208,7 +208,7 @@ a { color: var(--accent); }
         <button class="btn" id="lcShot3">In 3 s aufnehmen</button>
         <button class="btn" id="lcFile">Bild laden …</button>
         <input type="file" id="lcFileInput" accept="image/*" hidden>
-        <button class="btn" id="lcEmpty" title="Objekt aus dem Bild nehmen, dann drücken: 3 s lang wird die leere Umgebung aufgenommen">Leere Szene aufnehmen</button>
+        <button class="btn" id="lcEmpty" title="Objekt aus dem Bild nehmen, dann drücken: 10 s lang wird die leere Umgebung aufgenommen. Bewege dich dabei, schwenke die Kamera leicht, ändere das Licht – nur unterschiedliche Bilder werden behalten">Leere Szene aufnehmen</button>
         <span class="note" id="lcEmptyInfo" hidden><span id="lcEmptyN"></span> <button class="btn small" id="lcEmptyClear" style="height:26px;padding:0 8px">×</button></span>
       </div>
       <div class="row" id="lcClick" style="margin:0">
@@ -604,14 +604,14 @@ function renderLearn() {
   $("#lcCompose").hidden = click; $("#lcClick").hidden = !click; $("#lcNameWrap").hidden = click; $("#lcTrain").hidden = click;
   $("#learnHint").innerHTML = click
     ? "<b>Auf das Objekt klicken</b> (linke Maustaste). Zeigt die Maske nur einen Teil: weiter auf den fehlenden Teil klicken. Zu viel erfasst: <b>rechte Maustaste</b> (oder Umschalt+Klick) auf den Überschuss. Dann <b>Foto übernehmen</b>."
-    : `<b>Objekt anlernen:</b> ${S.running ? "Halte das Objekt in die Kamera und nimm ein Foto auf. Wiederhole das mit <b>anderem Abstand und leicht gedrehtem Objekt</b> (ca. 5 Fotos), dann <b>Trainieren</b>. <i>Optional, aber hilfreich:</i> Objekt aus dem Bild nehmen und <b>Leere Szene aufnehmen</b> — so lernt das Programm deine echte Umgebung als „nicht das Objekt“." : "Starte links die Kamera (Karte 1) oder lade Fotos aus Dateien."} <b>${L.count}</b> Foto(s) aufgenommen.`;
+    : `<b>Objekt anlernen:</b> ${S.running ? "Halte das Objekt in die Kamera und nimm ein Foto auf. Wiederhole das mit <b>anderem Abstand und leicht gedrehtem Objekt</b> (ca. 5 Fotos), dann <b>Trainieren</b>. <i>Optional, aber hilfreich:</i> Objekt aus dem Bild nehmen und <b>Leere Szene aufnehmen</b> (10 s, dabei bewegen, Kamera leicht schwenken) — so lernt das Programm deine echte Umgebung als „nicht das Objekt“." : "Starte links die Kamera (Karte 1) oder lade Fotos aus Dateien."} <b>${L.count}</b> Foto(s) aufgenommen.`;
   const busyTrain = training || learn.training && L.phase !== "error";
   $("#lcShot").disabled = !S.running || S.frames === 0 || busyTrain || learn.countdown > 0;
   $("#lcShot3").disabled = $("#lcShot").disabled; $("#lcFile").disabled = busyTrain || learn.countdown > 0;
   $("#lcAdd").disabled = !learn.mask || learn.busy;
   $("#lcEmpty").disabled = !S.running || S.frames === 0 || busyTrain || !!L.empty_capturing;
-  $("#lcEmpty").textContent = L.empty_capturing ? "Nehme auf … (3 s)" : "Leere Szene aufnehmen";
-  $("#lcEmptyInfo").hidden = !L.empty; $("#lcEmptyN").textContent = `Leere Szene: ${L.empty || 0} Bilder`;
+  $("#lcEmpty").textContent = L.empty_capturing ? "Nehme auf … (10 s) – bewege dich / schwenke leicht" : "Leere Szene aufnehmen";
+  $("#lcEmptyInfo").hidden = !L.empty; $("#lcEmptyN").textContent = `Leere Szene: ${L.empty || 0} Bilder` + (!L.empty_capturing && L.empty < 6 ? " – zu wenig Abwechslung: nochmal aufnehmen und dabei bewegen" : "");
   const nameOk = /^[A-Za-z0-9_-]{1,40}$/.test($("#lcName").value.trim());
   $("#lcTrain").disabled = L.count < 2 || busyTrain || !nameOk;
   $("#lcTrain").textContent = busyTrain ? "Trainiere …" : `Trainieren (${L.count} Fotos)`;

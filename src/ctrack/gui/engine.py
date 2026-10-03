@@ -110,6 +110,11 @@ class Settings:
 RESTART_KEYS = {"source", "device", "recording", "detector", "template", "learned"}
 
 
+EMPTY_SECONDS = 10.0       # empty-scene capture: how long to watch
+EMPTY_SAMPLE_S = 0.25
+EMPTY_MIN_DIFF = 4.0       # mean grey-level difference (0-255, 48x27 thumbnail) for a frame to count as 'different'
+EMPTY_PER_CAPTURE = 20
+EMPTY_MAX_TOTAL = 40
 RING_S = 15.0           # seconds kept for "Szene sichern"
 AUTO_SCENE_GAP_S = 30.0  # at most one automatic clip per this many seconds
 MAX_AUTO_SCENES = 10
@@ -597,24 +602,33 @@ class Engine:
         if 0 <= index < len(self._learn_samples):
             del self._learn_samples[index], self._learn_thumbs[index]
 
-    def learn_empty_start(self, n: int = 12, seconds: float = 3.0) -> None:
-        """Grab n live frames over `seconds` (point the camera at the scene WITHOUT the object)."""
+    def learn_empty_start(self, seconds: float = EMPTY_SECONDS) -> None:
+        """Watch the live camera for `seconds` (scene WITHOUT the object) and keep frames that look different from
+        those already kept: a still scene yields few frames, a moving one (person, camera, light) yields many."""
         if not self._running() or self._last_raw is None:
             raise ValueError("Kamera läuft nicht – zuerst starten")
         if self._empty_capturing:
             raise ValueError("Aufnahme läuft bereits")
-        n = int(min(max(n, 3), 24))
         self._empty_capturing = True
+
+        def small(img: np.ndarray) -> np.ndarray:
+            return cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (48, 27), interpolation=cv2.INTER_AREA).astype(np.float32)
 
         def work() -> None:
             try:
-                for _ in range(n):
-                    time.sleep(seconds / n)
+                kept: list[np.ndarray] = []
+                t_end = time.time() + seconds
+                while time.time() < t_end and len(kept) < EMPTY_PER_CAPTURE:
+                    time.sleep(EMPTY_SAMPLE_S)
                     with self._frame_cv:
                         frame = self._last_raw
-                    if frame is not None:
+                    if frame is None:
+                        continue
+                    sm = small(frame)
+                    if all(float(np.abs(sm - k).mean()) > EMPTY_MIN_DIFF for k in kept):
+                        kept.append(sm)
                         self._learn_empty.append(frame.copy())
-                del self._learn_empty[:-36]          # keep the newest 36
+                del self._learn_empty[:-EMPTY_MAX_TOTAL]
             finally:
                 self._empty_capturing = False
 

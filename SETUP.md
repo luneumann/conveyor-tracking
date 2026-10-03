@@ -60,7 +60,7 @@ Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil
    Zu viel markiert (z. B. die Hand): **rechte Maustaste** auf den Überschuss. → **Foto übernehmen**.
 5. Das Ganze **~5 Mal** mit **anderem Abstand, leicht gedrehtem Objekt, anderem Griff und gern anderem Hintergrund**.
 6. **Empfohlen:** Objekt aus dem Bild nehmen, Kamera auf deine normale Umgebung richten → **Leere Szene aufnehmen**
-   (3 s). Das Programm lernt dann deine echte Umgebung als „nicht das Objekt“ und verwechselt weniger.
+   (10 s). **Bewege dich dabei, schwenke die Kamera leicht, ändere gern das Licht:** nur Bilder, die sich voneinander unterscheiden, werden behalten (steht alles still, entstehen nur 2–3 Bilder und die Oberfläche bittet um eine neue Aufnahme). Das Programm lernt dann deine echte Umgebung als „nicht das Objekt“ und verwechselt weniger.
 7. Name eintragen → **Trainieren** (ca. 15 s; beim allerersten Mal ca. 40 s, siehe unten). Danach ist das Objekt aktiv;
    **Tracking starten**.
 
