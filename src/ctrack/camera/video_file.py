@@ -44,6 +44,9 @@ class VideoFileSource(CameraSource):
                 self.timestamps = [(int(r["frame_id"]), float(r["t_exposure"])) for r in csv.DictReader(f)]
         self._index = 0
         self._wall_start: float | None = None
+        self._t_offset = 0.0      # looping: time and frame ids keep rising, a jump back would freeze the tracking filter
+        self._id_offset = 0
+        self._last: tuple[int, float] = (-1, 0.0)
 
     def _timestamp(self, index: int) -> tuple[int, float]:
         if self.timestamps is not None and index < len(self.timestamps):
@@ -57,11 +60,14 @@ class VideoFileSource(CameraSource):
                 return None
             self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             self._index = 0
-            self._wall_start = None
+            self._t_offset = self._last[1] + 1.0 / self.fps - self._timestamp(0)[1]
+            self._id_offset = self._last[0] + 1 - self._timestamp(0)[0]
             ok, image = self.cap.read()
             if not ok:
                 return None
         frame_id, t = self._timestamp(self._index)
+        frame_id, t = frame_id + self._id_offset, t + self._t_offset
+        self._last = (frame_id, t)
         if self.realtime:
             t0 = self._timestamp(0)[1]
             if self._wall_start is None:

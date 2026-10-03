@@ -9,12 +9,17 @@ from .types import Detection, Pose, TrackState, Velocity
 class Tracker:
     def __init__(self, predictor: KalmanPredictor, coast_ms: float = 300.0,
                  reacquire_radius_px: float = 80.0, reacquire_growth_px_s: float = 600.0,
-                 stale_ms: float = 150.0) -> None:
+                 stale_ms: float = 150.0, jump_px: float = 200.0, jump_px_s: float = 1500.0,
+                 jump_confirm: int = 3) -> None:
         self.predictor = predictor
         self.coast_s = coast_ms / 1000.0
         self.reacquire_radius = reacquire_radius_px
         self.reacquire_growth = reacquire_growth_px_s
         self.stale_s = stale_ms / 1000.0       # only used by advance() (asynchronous detection)
+        # A detection farther from the prediction than jump_px + jump_px_s * (time since last sighting) is not fused
+        # (one wrong blob must not hurl the velocity estimate); jump_confirm in a row = the object really is there.
+        self.jump_px, self.jump_px_s, self.jump_confirm = jump_px, jump_px_s, jump_confirm
+        self._jumps = 0
         self.state = TrackState.SEARCHING
         self.lock_requested = False
         self.t_last_seen: float | None = None
@@ -31,6 +36,7 @@ class Tracker:
         self.lock_requested = False
         self.t_last_seen = None
         self.t_lost = None
+        self._jumps = 0
         self.predictor.reset()
 
     def auto_lock_step(self, now: float, relock_after_s: float = 1.0, immediate: bool = False) -> None:
@@ -61,6 +67,14 @@ class Tracker:
             if self.lock_requested and detection is not None:
                 self._acquire(detection, t)
         elif s in (TrackState.TRACKING, TrackState.COASTING):
+            if detection is not None and self._is_jump(detection, t):
+                self._jumps += 1
+                if self._jumps >= self.jump_confirm:
+                    self._acquire(detection, t)
+                    return self.state
+                detection = None
+            elif detection is not None:
+                self._jumps = 0
             if detection is not None:
                 self.predictor.update(detection.pose, t, detection.noise_scale)
                 self.t_last_seen = t
@@ -76,6 +90,12 @@ class Tracker:
                 if ref is not None and ref.distance(detection.pose) <= self.reacquire_radius_at(t):
                     self._acquire(detection, t)
         return self.state
+
+    def _is_jump(self, detection: Detection, t: float) -> bool:
+        if self.t_last_seen is None or t < self.t_last_seen:
+            return False
+        ref = self.predictor.predict(t)
+        return ref.distance(detection.pose) > self.jump_px + self.jump_px_s * (t - self.t_last_seen)
 
     def advance(self, t: float) -> TrackState:
         """Time passes without a new detection RESULT (asynchronous detection: the worker is still busy).
@@ -98,6 +118,7 @@ class Tracker:
         self.lock_requested = False
         self.t_last_seen = t
         self.t_lost = None
+        self._jumps = 0
 
     def estimate(self, t: float) -> tuple[Pose, Velocity] | None:
         """Pose to publish at time t: filter estimate in TRACKING, prediction in COASTING, else None."""

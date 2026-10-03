@@ -112,3 +112,24 @@ def test_lock_ignored_while_tracking(tracker):
     tracker.update(det(1, 1), 0.0)
     tracker.request_lock()
     assert not tracker.lock_requested
+
+
+def test_single_wrong_blob_is_not_fused(tracker):
+    tracker.request_lock()
+    t = _track_moving(tracker)
+    v_before = tracker.predictor.velocity().vx
+    tracker.update(det(1500, 300), t + 1 / FPS)               # far away from the prediction
+    assert tracker.predictor.velocity().vx == pytest.approx(v_before)
+    assert tracker.state is S.COASTING
+    tracker.update(det(100 + 200 * (t + 2 / FPS), 300), t + 2 / FPS)
+    assert tracker.state is S.TRACKING
+
+
+def test_object_that_really_jumped_is_taken_over_after_a_few_frames(tracker):
+    tracker.request_lock()
+    t = _track_moving(tracker)
+    for i in range(1, 4):
+        tracker.update(det(1500, 300), t + i / FPS)
+    assert tracker.state is S.TRACKING
+    assert tracker.predictor.predict(t + 4 / FPS).x == pytest.approx(1500, abs=5)
+    assert abs(tracker.predictor.velocity().vx) < 1.0         # re-initialised, no velocity blow-up

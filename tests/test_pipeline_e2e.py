@@ -114,3 +114,19 @@ def test_record_and_replay_reproduce_timestamps(tmp_path):
     assert not replay.is_live
     assert [i for i, _ in replayed] == [i for i, _ in original]
     assert [t for _, t in replayed] == pytest.approx([t for _, t in original], abs=1e-6)
+
+
+def test_looping_video_keeps_time_rising(tmp_path):
+    import cv2
+    import numpy as np
+    from ctrack.camera.video_file import VideoFileSource
+    p = tmp_path / "v.mp4"
+    w = cv2.VideoWriter(str(p), cv2.VideoWriter_fourcc(*"mp4v"), 10.0, (64, 48))
+    for _ in range(3):
+        w.write(np.zeros((48, 64, 3), np.uint8))
+    w.release()
+    cam = VideoFileSource(str(p), loop=True)
+    frames = [cam.read() for _ in range(8)]
+    ts = [f.t_exposure for f in frames]
+    assert all(b > a for a, b in zip(ts, ts[1:])), ts
+    assert [f.frame_id for f in frames] == list(range(8))
