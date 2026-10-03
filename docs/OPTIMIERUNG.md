@@ -295,3 +295,27 @@ größte Abweichung 0,005 bei Mittelwert 0,415). Messung auf diesem Mac (Median,
 
 **Folgerung:** EdgeTAM ist auf diesem Gerät **nicht echtzeitfähig im Sinne von 25–30 Bildern/s** und taugt, wenn überhaupt, als *langsamer Verfeinerer* (wenige Hz) neben dem schnellen Detektor, nicht als Haupt-Tracker.
 Die bessere Maskenqualität (IoU 0,94–0,97) bleibt ein Argument für einen Genau-Modus bei niedriger Rate; das müsste gegen den Aufwand (PyTorch 2.7, eigener Export, nur Mac) abgewogen werden.
+
+## 15. Große Objekte: Merkmals-Anker statt Silhouette (03.10.2026, Prototyp, nicht eingebaut)
+
+**Beobachtung (Nutzer):** Bei großen Objekten (Karosse) schwankt die Pose der ganzen Maske stark — Schwerpunkt und Hauptachse einer Maske folgen jedem Fehler an ihrem Rand.
+
+**Idee:** Die Maske liefert nur die grobe Lage (Suchgebiet). Die Pose kommt aus automatisch gefundenen Bildmerkmalen (SIFT) innerhalb der Maske: Referenzmerkmale aus den Anlernbildern werden im aktuellen Bild
+wiedergefunden, eine Ähnlichkeitstransformation (RANSAC) liefert Verschiebung und Drehung; abgebildet wird ein **fester Ankerpunkt am Objekt** (optional vom Nutzer als „dedizierte Merkmalsregion" gewählt,
+sonst z. B. Maskenschwerpunkt des Referenzbildes). Referenzen werden über Nachbaransichten verkettet, damit der Anker in allen Ansichten derselbe physische Punkt bleibt.
+
+**Messung** (Karosse-Video, 344 Bilder, 5 Anlernansichten, Anker = Tür; Rauschmaß = Betrag der zweiten Differenz der Position je Bild, Median / 90. Perzentil; die Bewegung ist glatt, Sprünge sind Rauschen):
+
+| Verfahren | Rauschen x (px) | Rauschen y (px) | Abdeckung |
+|---|---|---|---|
+| Maskenschwerpunkt (jetzt) | 13,9 / p90 64 | 5,8 / p90 24 | 98 % |
+| Merkmals-Anker (SIFT, Ähnlichkeitstransformation) | **0,49** / p90 4,8 | **0,15** / p90 2,0 | 100 % |
+
+Etwa 28-mal ruhiger im Median. Median 58 stimmige Merkmale je Bild. Aufwand: ca. 79 ms je Bild (SIFT im Suchgebiet + Abgleich mit 5 Referenzen, nur CPU, ungetuned).
+
+**Grenzen/Vorbehalte:** (1) Gemessen ist nur **Glätte**, nicht die absolute Genauigkeit des Ankers; die Verkettung der Referenzen kann einen Versatz tragen (erste Verkettung nur 10 stimmige Merkmale). Dafür bräuchte es einen Marker
+oder gemessene Soll-Positionen. (2) Die Karosse ist stark texturiert; glatte, einfarbige Teile liefern kaum Merkmale — dort bleibt die Maske die einzige Quelle. (3) Mit großer Blickwinkeländerung scheitert der Abgleich einzelner Referenzen (Referenz 279 ließ sich nicht verketten).
+(4) Szenenschnitte im Stock-Video erzeugen vereinzelte große Sprünge (Bild 255) — sie wirken auf beide Verfahren.
+
+**Entwurf, falls eingebaut:** Modell speichert je Anlernfoto Schlüsselpunkte + Deskriptoren (innerhalb der Maske, bei gewählter Region nur dort) und den Anker; Umschalter „Merkmals-Tracking" (Aus / Auto / An; Auto = an, wenn das Objekt > ca. 20 % der Bildbreite einnimmt);
+bei fehlgeschlagenem Abgleich Rückfall auf die Maske, **in derselben Anker-Konvention** (Anker aus Maskenlage und -winkel abgeleitet), damit die Pose nicht zwischen zwei Bezugspunkten springt.
