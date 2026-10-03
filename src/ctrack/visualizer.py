@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 
 from .pipeline import StepResult
-from .types import Pose, TrackState
+from .types import Pose, TrackState, wrap_angle
 
 STATE_COLORS = {
     TrackState.SEARCHING: (200, 200, 200),
@@ -64,7 +64,7 @@ class OverlayRenderer:
         det = step.detection
         if det is not None:
             if det.contour is not None:
-                cv2.polylines(img, [np.round(det.contour).astype(np.int32)], True, (210, 190, 40), 2, cv2.LINE_AA)
+                self._segment(img, det, step)
             if det.keypoints is not None:
                 for x, y in det.keypoints[:, :2]:
                     cv2.circle(img, (round(x), round(y)), 3, (180, 180, 180), -1, cv2.LINE_AA)
@@ -73,13 +73,36 @@ class OverlayRenderer:
         if step.state is TrackState.LOST and reference is not None:
             cv2.circle(img, (round(reference.x), round(reference.y)), round(gate_radius or self.reacquire_radius),
                        STATE_COLORS[TrackState.LOST], 1, cv2.LINE_AA)
+        compact = det is not None and det.contour is not None      # the segment itself shows the object: keep the axes small
         if step.pose is not None:
-            draw_axes(img, step.pose)
+            draw_axes(img, step.pose, length=45.0 if compact else 90.0)
         if step.predicted is not None:
-            draw_axes(img, step.predicted, dashed=True, color=PRED_COLOR)
+            draw_axes(img, step.predicted, length=45.0 if compact else 90.0, dashed=True, color=PRED_COLOR)
         if self.hud:
             self._hud(img, step, stats)
         return img
+
+    @staticmethod
+    def _segment(img: np.ndarray, det, step: StepResult) -> None:
+        """The detected object's outline as a filled, translucent segment in the state colour.
+
+        With asynchronous detection the outline is a few frames old; it is moved and turned by the way the tracked
+        pose has moved since, so the segment sits on the object in the live image instead of trailing behind it."""
+        pts = np.asarray(det.contour, np.float32)
+        if step.pose is not None and step.detection_t is not None and step.detection_t < step.frame.t_exposure:
+            dth = wrap_angle(step.pose.theta - det.theta)
+            if abs(dth) < 0.6:
+                c, s_ = math.cos(dth), math.sin(dth)
+                rel = pts - (det.x, det.y)
+                pts = np.column_stack([c * rel[:, 0] - s_ * rel[:, 1], s_ * rel[:, 0] + c * rel[:, 1]]) + (step.pose.x, step.pose.y)
+            else:
+                pts = pts + (step.pose.x - det.x, step.pose.y - det.y)
+        poly = np.round(pts).astype(np.int32)
+        color = STATE_COLORS[step.state] if step.state is not TrackState.SEARCHING else (210, 190, 40)
+        fill = img.copy()
+        cv2.fillPoly(fill, [poly], color)
+        cv2.addWeighted(fill, 0.35, img, 0.65, 0, dst=img)
+        cv2.polylines(img, [poly], True, color, 2, cv2.LINE_AA)
 
     def _hud(self, img: np.ndarray, step: StepResult, stats: dict[str, float]) -> None:
         lines = [
