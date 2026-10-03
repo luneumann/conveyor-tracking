@@ -1,4 +1,4 @@
-# ctrack — Conveyor Tracking Prototyp
+# Lockstep (`ctrack`) — kamerabasierter virtueller Encoder
 
 Kameragestützter "virtueller Encoder": ein Objekt einlocken, seine Pose (x, y, θ) verfolgen,
 latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Roboter senden.
@@ -7,7 +7,7 @@ latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Ro
 
 ## Schnellstart (ohne Terminal)
 
-**Doppelklick auf `Conveyor Tracking starten.command` (Mac) bzw. `Conveyor Tracking starten.bat` (Windows, siehe SETUP.md).** Beim ersten Mal richtet es die Umgebung ein, danach
+**Doppelklick auf `Lockstep starten.command` (Mac) bzw. `Lockstep starten.bat` (Windows, siehe SETUP.md).** Beim ersten Mal richtet es die Umgebung ein, danach
 öffnet sich im Browser die Oberfläche (`http://127.0.0.1:8765`):
 
 1. **Quelle** wählen: *Kamera*, *Demo-Band* (simuliert, ohne Kamera) oder *Aufnahme* → **Starten**.

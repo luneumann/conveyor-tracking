@@ -10,7 +10,7 @@ brauchen dich, weil sie Kamera, Downloads oder Entscheidungen betreffen.
 
 ### Windows
 
-**Doppelklick auf `Conveyor Tracking starten.bat`.** Beim ersten Mal richtet sie die Umgebung ein (einige Minuten), danach öffnet sich die
+**Doppelklick auf `Lockstep starten.bat`.** Beim ersten Mal richtet sie die Umgebung ein (einige Minuten), danach öffnet sich die
 Oberfläche im Browser. Fehlt Python: von python.org installieren und dabei **„Add python.exe to PATH“** anhaken.
 - Die Windows-Firewall fragt eventuell einmal nach; **Zugriff auf privaten Netzen** reicht (die Oberfläche hört nur auf `127.0.0.1`).
 - Kamera: *Einstellungen → Datenschutz → Kamera* muss Desktop-Apps erlauben; Teams, Zoom oder der Browser dürfen die Kamera gerade nicht nutzen.
@@ -24,7 +24,7 @@ Oberfläche im Browser. Fehlt Python: von python.org installieren und dabei **�
 
 ### 1. Programm starten
 
-**Doppelklick auf `Conveyor Tracking starten.command`** (im Projektordner). Es öffnet ein Terminal-Fenster
+**Doppelklick auf `Lockstep starten.command`** (im Projektordner). Es öffnet ein Terminal-Fenster
 (das offen bleiben muss, solange du arbeitest) und danach den Browser mit der Oberfläche
 (`http://127.0.0.1:8765`). Beim allerersten Mal richtet es die Python-Umgebung selbst ein (einige Minuten).
 
@@ -164,7 +164,7 @@ Das Projekt liegt in einem privaten Repo: https://github.com/luneumann/conveyor-
 | Zielroboter (FANUC/UR/KUKA/ABB) und Protokoll | Engineering, BD | P2-7 |
 | Typische Bandgeschwindigkeiten und Genauigkeiten Automotive | BD, Vertrieb | Zielwerte Stufe 2 |
 | Encoder-Hardware-Emulation vs. Software-Positionsdaten | Engineering | P2-5, P2-7 |
-| MSS-Anbindung (Prozess, Schnittstelle, Python vs. C++) | Engineering | P2-8 |
+| Anbindung an ein Produktivsystem (Prozess, Schnittstelle, Python vs. C++) | Engineering | P2-8 |
 | Welche IDS-Kamera für Stufe 2 | Luki | P2-1 |
 | Konstant-Geschwindigkeit ausreichend? | Ergebnis Stufe 1 | – |
 

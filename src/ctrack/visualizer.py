@@ -12,11 +12,11 @@ from .types import Pose, TrackState, wrap_angle
 
 STATE_COLORS = {
     TrackState.SEARCHING: (200, 200, 200),
-    TrackState.TRACKING: (80, 200, 80),
+    TrackState.TRACKING: (246, 130, 59),
     TrackState.COASTING: (0, 190, 255),
     TrackState.LOST: (60, 60, 230),
 }
-X_COLOR, Y_COLOR, PRED_COLOR = (60, 60, 255), (80, 220, 80), (255, 200, 0)
+X_COLOR, Y_COLOR, PRED_COLOR = (80, 80, 255), (245, 245, 245), (230, 110, 200)
 
 
 def _dashed_line(img: np.ndarray, p0: tuple[float, float], p1: tuple[float, float], color: tuple[int, int, int],

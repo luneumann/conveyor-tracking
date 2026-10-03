@@ -2,7 +2,7 @@
 
 ## Web-Oberfläche (Standard)
 
-Start per Doppelklick auf `Conveyor Tracking starten.command`. Links Live-Bild mit Overlay und Kennzahlen,
+Start per Doppelklick auf `Lockstep starten.command`. Links Live-Bild mit Overlay und Kennzahlen,
 rechts die Bedienung in der Reihenfolge des Ablaufs:
 
 | Karte | Inhalt |

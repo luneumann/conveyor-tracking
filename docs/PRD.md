@@ -7,7 +7,7 @@
 
 ## 1. Problem Statement
 
-Die MSS-Software misst Bauteile heute nur statisch: Bild aufnehmen, Pose bestimmen, Ergebnis übergeben. Für Roboteranwendungen an bewegten Bändern fehlt die Fähigkeit, ein Bauteil einmal zu erfassen und seine Bewegung kontinuierlich zu verfolgen, sodass der Roboter laufend eine aktuelle, latenzkompensierte Pose erhält. Heute übernimmt diese Rolle ein Encoder am Band; ohne ihn ist Bandtracking nicht möglich. Wettbewerber wie Inbolt positionieren genau diese Fähigkeit (Roboterführung an laufenden Montagelinien, z. B. mit FANUC) als Kernangebot. Ohne eigene Antwort fehlt VMT ein relevanter Baustein im Robot-Vision-Portfolio für Automotive.
+Bestehende Vision-Software misst Bauteile typischerweise nur statisch: Bild aufnehmen, Pose bestimmen, Ergebnis übergeben. Für Roboteranwendungen an bewegten Bändern fehlt die Fähigkeit, ein Bauteil einmal zu erfassen und seine Bewegung kontinuierlich zu verfolgen, sodass der Roboter laufend eine aktuelle, latenzkompensierte Pose erhält. Heute übernimmt diese Rolle ein Encoder am Band; ohne ihn ist Bandtracking nicht möglich. Am Markt gibt es Lösungen, die genau diese Fähigkeit anbieten (Roboterführung an laufenden Montagelinien). Ohne eigene Lösung fehlt im Robot-Vision-Portfolio ein relevanter Baustein, etwa für die Automobilindustrie.
 
 ## 2. Ziele
 
@@ -26,7 +26,7 @@ Die MSS-Software misst Bauteile heute nur statisch: Bild aufnehmen, Pose bestimm
 | 6-DoF-Pose | Bandbewegung ist planar; 3-DoF (x, y, θ) deckt den Kernfall ab |
 | Mehrere Objekte gleichzeitig | Erhöht Komplexität (Zuordnung) ohne Mehrwert für den Machbarkeitsnachweis |
 | Metrische Genauigkeit | Webcam unkalibriert, Ausgabe in Pixeln |
-| Integration in MSS | Prototyp läuft standalone; MSS-Dienst ist eigene Initiative |
+| Integration in ein Produktivsystem | Prototyp läuft standalone; ein Dienst wäre eine eigene Initiative |
 | Produktionsreife (Safety, Robustheit, GUI) | Prototyp, keine Kundenauslieferung |
 
 ## 4. User Stories
@@ -147,7 +147,7 @@ metrics:  { csv: logs/run.csv }
 | P2-5 | Virtueller Encoder: Position und Geschwindigkeit entlang Bandrichtung als Zählwert/Inkremente | Geschwindigkeit ist Teil des Filterzustands und des Streams |
 | P2-6 | `ShapeMatchDetector`: Objekt aus einem Referenzbild einlernen | Lock-on-Logik unabhängig vom Detektor |
 | P2-7 | Robot-Adapter (z. B. FANUC, UR RTDE, KUKA) bzw. Encoder-Emulation | Publisher ist Plugin; Nachrichtenformat versioniert |
-| P2-8 | Überführung als Dienst in MSS | Kernlogik ohne UI-Abhängigkeit, Visualizer optional abschaltbar |
+| P2-8 | Überführung als Dienst in ein Produktivsystem | Kernlogik ohne UI-Abhängigkeit, Visualizer optional abschaltbar |
 
 ## 7. Erfolgsmetriken
 
@@ -159,7 +159,7 @@ metrics:  { csv: logs/run.csv }
 | Leading | Framerate End-to-End | ≥ 25 fps | ≥ 30 fps | Visualizer |
 | Leading | Paketverlust im Stream (lokal) | 0 % | – | `receiver.py` |
 | Lagging | Aufwand Wechsel auf IDS + ArUco | Nur neue Module + Konfiguration | – | Code-Diff bei Stufe 2 |
-| Lagging | Interne Entscheidung zur Weiterverfolgung als MSS-Dienst | Go/No-Go nach Demo | – | Abstimmung mit Engineering/BD |
+| Lagging | Entscheidung zur Weiterverfolgung als eigenständiger Dienst | Go/No-Go nach Demo | – | Abstimmung mit Engineering/BD |
 
 Auswertung: nach Abschluss Stufe 1 (Demo-Termin), erneut nach Stufe 2 mit mm-Werten.
 
@@ -170,7 +170,7 @@ Auswertung: nach Abschluss Stufe 1 (Demo-Termin), erneut nach Stufe 2 mit mm-Wer
 | Welche Roboterplattform ist Zielsystem (FANUC, UR, KUKA, ABB) und welches Protokoll (Conveyor-Tracking-Option vs. externe Positionskorrektur)? | Engineering, BD | Stufe 2 (P2-7) |
 | Welche Bandgeschwindigkeiten und Positioniergenauigkeiten fordern typische Automotive-Anwendungen? | BD, Vertrieb | Zielwerte Stufe 2 |
 | Erwartet die Robotersteuerung Encoder-Signale (Hardware-Emulation) oder Software-Positionsdaten? | Engineering | P2-5, P2-7 |
-| Wie wird ein Dienst in MSS angebunden (Prozess, Schnittstelle, Sprache Python vs. C++)? | Engineering | P2-8 |
+| Wie wird ein Dienst in ein Produktivsystem eingebunden (Prozess, Schnittstelle, Sprache Python vs. C++)? | Engineering | P2-8 |
 | Welche IDS-Kamera (USB3/GigE, Global Shutter, Trigger-Eingang) steht für Stufe 2 zur Verfügung? | Luki | P2-1 |
 | Reicht ein Konstant-Geschwindigkeits-Modell, oder braucht es Beschleunigung (Anfahren/Stoppen des Bands)? | Ergebnis Stufe 1 | Nicht blockierend |
 
@@ -186,7 +186,7 @@ Keine harte Deadline. Vorgeschlagene Iterationen, je eine abgeschlossene, lauff�
 | 2a | IdsPeakSource, ArucoDetector auf IPC | Tracking mit Industriekamera |
 | 2b | ChArUco-Kalibrierung, Ebenenkalibrierung, mm-Ausgabe, virtueller Encoder | Metrischer Stream im Bandsystem |
 | 2c | ShapeMatchDetector, Objekt-Teach-in | Tracking eines echten Bauteils |
-| 2d | Robot-Adapter, MSS-Integration | Abhängig von offenen Fragen |
+| 2d | Robot-Adapter, Systemintegration | Abhängig von offenen Fragen |
 
 ## 10. Vorgeschlagene Projektstruktur
 

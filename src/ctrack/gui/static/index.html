@@ -3,20 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Conveyor Tracking</title>
+<title>Lockstep</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b6fe0'/%3E%3Cpath d='M8 12V8h4M20 8h4v4M24 20v4h-4M12 24H8v-4' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M9 16h14' stroke='white' stroke-width='2' stroke-linecap='round' opacity='.55'/%3E%3Ccircle cx='16' cy='16' r='3.2' fill='white'/%3E%3C/svg%3E">
 <style>
 :root {
-  --bg: #f4f6f8; --surface: #ffffff; --surface-2: #eef1f4; --text: #14202b; --muted: #5b6b7a;
-  --border: #d8dee5; --accent: #0f766e; --accent-hover: #0b5e58; --on-accent: #ffffff;
-  --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --idle: #64748b; --stage: #0b0f14;
-  --focus: #2563eb; --shadow: 0 1px 2px rgba(15, 23, 42, .06);
+  --bg: #f4f5f8; --surface: #ffffff; --surface-2: #eceff4; --text: #1a2230; --muted: #5d6877;
+  --border: #dce0e8; --accent: #3b6fe0; --accent-hover: #2f5bc0; --on-accent: #ffffff;
+  --ok: #2f8a6b; --warn: #b7791f; --bad: #c0392b; --idle: #6b7686; --stage: #0c1016;
+  --focus: #3b6fe0; --shadow: 0 1px 2px rgba(15, 23, 42, .06);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e141a; --surface: #161e26; --surface-2: #1d2731; --text: #e6edf3; --muted: #93a4b5;
-    --border: #2a3744; --accent: #2dd4bf; --accent-hover: #5eead4; --on-accent: #06201d;
-    --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --idle: #94a3b8; --stage: #05080b;
-    --focus: #60a5fa; --shadow: none;
+    --bg: #0f1218; --surface: #171b23; --surface-2: #1f2430; --text: #e8ecf2; --muted: #98a3b3;
+    --border: #2b3240; --accent: #6d9bff; --accent-hover: #93b4ff; --on-accent: #0b1330;
+    --ok: #6cc4a1; --warn: #f0b84a; --bad: #f27d72; --idle: #98a3b3; --stage: #06080c;
+    --focus: #93b4ff; --shadow: none;
   }
 }
 * { box-sizing: border-box; }
@@ -27,16 +28,20 @@ button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--surface);
-  border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+html, body { height: 100%; }
+body { display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 14px; padding: 10px 20px; flex: none; background: var(--surface);
+  border-bottom: 1px solid var(--border); z-index: 5; }
 .logo { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; }
-.logo svg { width: 18px; height: 18px; stroke: var(--on-accent); }
+.logo svg { width: 20px; height: 20px; stroke: var(--on-accent); color: var(--on-accent); }
+header h1 small { font-weight: 400; font-size: 13px; color: var(--muted); margin-left: 8px; }
+@media (max-width: 760px) { header h1 small { display: none; } }
 header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .1px; }
 .spacer { flex: 1; }
 .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px;
   background: var(--surface-2); border: 1px solid var(--border); font-weight: 600; font-size: 14px; }
 .pill .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
-.pill[data-state="TRACKING"] .dot { background: var(--ok); }
+.pill[data-state="TRACKING"] .dot { background: var(--accent); }
 .pill[data-state="COASTING"] .dot { background: var(--warn); }
 .pill[data-state="LOST"] .dot { background: var(--bad); }
 .pill[data-state="SEARCHING"] .dot { background: var(--muted); }
@@ -44,17 +49,22 @@ header h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .1px; 
 @keyframes pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .pill .dot { animation: none !important; } }
 
-main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; padding: 18px 20px 40px;
-  max-width: 1500px; margin: 0 auto; }
-@media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); padding: 14px 16px 40px; } }
+main { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; padding: 14px 18px 16px; flex: 1; min-height: 0; }
+.live { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+@media (max-width: 1000px), (max-height: 560px) {
+  html, body { height: auto; } body { display: block; }
+  main { display: block; padding: 14px 16px 40px; }
+  .live { margin-top: 14px; } .stage { aspect-ratio: 16 / 9; min-height: 0; flex: none; }
+  .steps { overflow: visible; } .step-b { overflow: visible; }
+}
 
-.banner { padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; font-size: 14px; display: none;
+.banner { padding: 10px 14px; border-radius: 10px; font-size: 14px; display: none;
   border: 1px solid var(--bad); color: var(--bad); background: color-mix(in srgb, var(--bad) 10%, var(--surface)); }
 .banner.show { display: block; }
 .banner.warn { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--surface)); }
 .banner b { font-weight: 650; }
 
-.stage { position: relative; aspect-ratio: 16 / 9; background: var(--stage); border-radius: 12px; overflow: hidden;
+.stage { position: relative; flex: 1; min-height: 160px; background: var(--stage); border-radius: 12px; overflow: hidden;
   border: 1px solid var(--border); }
 .stage img#stream, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .stage canvas { cursor: crosshair; touch-action: none; }
@@ -66,10 +76,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; pa
   background: rgba(8, 12, 16, .78); color: #fff; display: none; backdrop-filter: blur(4px); }
 .chip.show { display: block; }
 
-.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
-.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px; box-shadow: var(--shadow); }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; flex: none; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 7px 12px; box-shadow: var(--shadow); }
 .tile .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
-.tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.tile .v { font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; }
 .tile .v small { font-size: 13px; font-weight: 500; color: var(--muted); }
 .tile .goal { font-size: 12px; color: var(--muted); }
 .tile.ok .v { color: var(--ok); } .tile.bad .v { color: var(--bad); }
@@ -77,9 +87,10 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; pa
   background: var(--border); }
 .tile.ok .goal::before { background: var(--ok); } .tile.bad .goal::before { background: var(--bad); }
 
-.teachbar { display: none; margin-top: 12px; background: var(--surface); border: 1px solid var(--accent);
+.teachbar { display: none; flex: none; background: var(--surface); border: 1px solid var(--accent);
   border-radius: 12px; padding: 14px; gap: 12px; flex-wrap: wrap; align-items: end; }
-.teachbar.show { display: flex; }
+.teachbar.show { display: flex; max-height: 46vh; overflow: auto; }
+@media (max-height: 760px) { .tile .goal { display: none; } }
 .teachbar .hint { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 14px; }
 .teachbar .hint b { color: var(--text); }
 .field { display: flex; flex-direction: column; gap: 4px; }
@@ -87,13 +98,30 @@ main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; pa
 .field input[type=text], .field input[type=number], select {
   height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); }
 select { padding-right: 8px; }
+.field { min-width: 0; } .step-b .field select { width: 100%; max-width: 100%; }
+.step-b .row .field { flex: 1 1 140px; }
 
-aside { display: flex; flex-direction: column; gap: 14px; }
+aside { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.steps { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow: hidden; }
+.step { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow);
+  display: flex; flex-direction: column; min-height: 0; flex: 0 0 auto; }
+.step.open { flex: 0 1 auto; border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.step-h { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; border: 0; background: transparent;
+  cursor: pointer; text-align: left; border-radius: 12px; color: var(--text); flex: none; }
+.step-h:hover { background: var(--surface-2); }
+.step-h .t { font-size: 13px; font-weight: 650; color: var(--text); text-transform: uppercase; letter-spacing: .6px; }
+.step-h .sum { flex: 1; min-width: 0; text-align: right; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-h .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; flex: none;
+  background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 650; }
+.step.open .step-h .n { background: var(--accent); color: var(--on-accent); }
+.step-h .chev { width: 16px; height: 16px; flex: none; stroke: var(--muted); transition: transform .15s; }
+.step.open .step-h .chev { transform: rotate(180deg); }
+.step-b { display: none; padding: 2px 16px 16px; overflow: auto; min-height: 0; }
+.step.open .step-b { display: block; }
+.actions { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; }
+.actions .btn.block { height: 46px; font-size: 15px; padding: 0 10px; }
+@media (prefers-reduced-motion: reduce) { .step-h .chev { transition: none; } }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
-.card h2 { margin: 0 0 12px; font-size: 13px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .6px;
-  display: flex; align-items: center; gap: 8px; }
-.card h2 .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
-  background: var(--accent); color: var(--on-accent); font-size: 12px; letter-spacing: 0; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .row + .row, .row + .note, .seg + .row, .seg + .note, .note + .row { margin-top: 10px; }
 .note { font-size: 13px; color: var(--muted); margin: 0; }
@@ -114,12 +142,12 @@ aside { display: flex; flex-direction: column; gap: 14px; }
 .seg button { height: 36px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; font-weight: 600; color: var(--muted); }
 .seg button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .18); }
 
-.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 10px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin-top: 10px; }
 .tpl { position: relative; border: 2px solid var(--border); border-radius: 10px; background: var(--surface-2); padding: 0; cursor: pointer; overflow: hidden; text-align: left; }
 .tpl[aria-checked="true"] { border-color: var(--accent); }
-.tpl .img { height: 62px; background: repeating-conic-gradient(#8883 0 25%, transparent 0 50%) 0 0 / 14px 14px; display: grid; place-items: center; }
-.tpl img { max-width: 100%; max-height: 62px; object-fit: contain; }
-.tpl .nm { padding: 4px 8px 6px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tpl .img { height: 38px; background: repeating-conic-gradient(#8883 0 25%, transparent 0 50%) 0 0 / 14px 14px; display: grid; place-items: center; }
+.tpl img { max-width: 100%; max-height: 38px; object-fit: contain; }
+.tpl .nm { padding: 3px 8px 4px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tpl .nm small { display: block; font-weight: 400; color: var(--muted); }
 .tpl .del { position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: rgba(8, 12, 16, .7);
   color: #fff; cursor: pointer; display: none; line-height: 1; font-size: 15px; }
@@ -165,14 +193,118 @@ a { color: var(--accent); }
 </head>
 <body>
 <header>
-  <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17h18"/><path d="M7 17V9h6v8"/><path d="M16 9l3 3"/><circle cx="7" cy="19" r="1"/><circle cx="17" cy="19" r="1"/></svg></div>
-  <h1>Conveyor Tracking</h1>
+  <div class="logo" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V8h4M20 8h4v4M24 20v4h-4M12 24H8v-4"/><circle cx="16" cy="16" r="3" fill="currentColor" stroke="none"/></svg></div>
+  <h1>Lockstep <small>Kamera-Encoder für Förderbänder</small></h1>
   <div class="spacer"></div>
   <div class="pill" id="statePill" data-state="IDLE" role="status" aria-live="polite"><span class="dot"></span><span id="stateLabel">Bereit</span></div>
 </header>
 
 <main>
-  <section aria-label="Live-Ansicht">
+  <aside aria-label="Ablauf">
+    <div class="steps">
+    <section class="step" id="step1">
+      <button class="step-h" aria-expanded="false" aria-controls="b1"><span class="n">1</span><span class="t">Quelle</span><span class="sum" id="sum1"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="step-b" id="b1">
+      <div class="seg" role="radiogroup" aria-label="Quelle" id="segSource">
+        <button role="radio" data-v="camera">Kamera</button>
+        <button role="radio" data-v="demo">Demo-Band</button>
+        <button role="radio" data-v="replay">Aufnahme</button>
+      </div>
+      <div class="row" id="rowCamera"><div class="field"><label for="selDevice">Kamera</label>
+        <select id="selDevice"><option value="0">Kamera 0 (Standard)</option><option value="1">Kamera 1</option><option value="2">Kamera 2</option><option value="3">Kamera 3</option></select></div></div>
+      <div class="row" id="rowReplay"><div class="field"><label for="selRec">Aufnahme</label><select id="selRec"></select></div></div>
+      <p class="note" id="noteDemo">Simuliertes Band mit Teil – funktioniert ohne Kamera (Erkennung „Bauteil“ mit dem Demo-Teil).</p>
+      </div>
+    </section>
+    <section class="step" id="step2">
+      <button class="step-h" aria-expanded="false" aria-controls="b2"><span class="n">2</span><span class="t">Erkennung</span><span class="sum" id="sum2"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="step-b" id="b2">
+      <div class="seg" role="radiogroup" aria-label="Erkennung" id="segDetector">
+        <button role="radio" data-v="learned">Gelernt</button>
+        <button role="radio" data-v="template">Referenzbild</button>
+        <button role="radio" data-v="hand">Hand</button>
+      </div>
+      <p class="note" id="noteHand">Handerkennung (MediaPipe). Zum Testen ohne Bauteil.</p>
+      <div id="noteNoModel"><p class="note bad">Das Handmodell (7,8 MB, von Google) fehlt noch.</p>
+        <div class="row"><button class="btn small" id="btnModel">Handmodell laden</button></div></div>
+      <div id="learnSection">
+        <div id="noteVision" style="margin-top:10px"><p class="note bad">Dafür fehlen die Bild-Modelle (ca. 133 MB, einmalig, von Hugging Face).</p>
+          <div class="row"><button class="btn small" id="btnVision">Modelle laden</button></div></div>
+        <div class="row" style="margin-top:10px"><button class="btn small primary" id="btnLearn">Neues Objekt anlernen</button></div>
+        <div class="gallery" id="galleryLearned" role="radiogroup" aria-label="Gelernte Objekte"></div>
+        <p class="note" id="learnIntro" style="margin-top:10px">Das Programm lernt dein Objekt aus etwa 5 Fotos: Objekt in die Kamera halten, <b>einmal anklicken</b>, fertig. Danach findet es das Objekt bei anderem Abstand und leichter Drehung wieder.</p>
+        <p class="note" id="noteAccel" style="margin-top:8px" hidden></p>
+      </div>
+      <div id="tplSection">
+        <div class="gallery" id="gallery" role="radiogroup" aria-label="Referenzbilder"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn small" id="btnTeachLive">Aus Livebild einlernen</button>
+          <button class="btn small" id="btnTeachFile">Bild laden …</button>
+          <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+        <details style="margin-top:12px"><summary>So lernst du ein Teil ein</summary>
+          <ol><li>Teil in der gewünschten <b>Nullstellung</b> vor die Kamera legen.</li>
+          <li>Kamera starten, <b>Aus Livebild einlernen</b> drücken (das Bild friert ein).</li>
+          <li>Rechteck <b>eng um das Teil</b> ziehen, Namen eingeben, speichern.</li>
+          <li>Das neue Referenzbild ist sofort ausgewählt.</li></ol>
+          <p class="note" style="margin-top:8px">Voraussetzungen: gleichbleibender Abstand Kamera–Teil (±10 % Größe verfälscht die Pose), ein asymmetrisches Merkmal am Teil, mindestens ~70 % sichtbar.</p>
+        </details>
+      </div>
+      </div>
+    </section>
+    <section class="step" id="step3">
+      <button class="step-h" aria-expanded="false" aria-controls="b3"><span class="n">3</span><span class="t">Tracking</span><span class="sum" id="sum3"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="step-b" id="b3">
+      <p class="note" id="noteDet" style="margin-top:10px">–</p>
+      <label class="switch" style="margin-top:12px"><input type="checkbox" id="swAuto"><span class="track"></span><span class="lbl"><b>Automatisch einlocken</b><span>Erstes erkanntes Objekt verfolgen, nach Verlust das nächste</span></span></label>
+
+        <div class="field" id="fieldSpeed" style="margin-bottom:14px"><label for="selSpeed">Tempo (gelerntes Objekt)</label>
+          <select id="selSpeed"><option value="fast">Schnell (weniger genau)</option><option value="balanced">Ausgewogen</option><option value="precise">Genau (336 px, langsamer)</option></select></div>
+
+      </div>
+    </section>
+    <section class="step" id="step4">
+      <button class="step-h" aria-expanded="false" aria-controls="b4"><span class="n">4</span><span class="t">Ausgabe &amp; Aufnahme</span><span class="sum" id="sum4"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="step-b" id="b4">
+      <label class="switch"><input type="checkbox" id="swOut"><span class="track"></span><span class="lbl"><b>Pose per UDP senden</b><span id="outInfo">An Roboter / Empfänger</span></span></label>
+      <div class="row">
+        <div class="field"><label for="inHost">Adresse</label><input type="text" id="inHost" value="127.0.0.1" style="width:150px" spellcheck="false"></div>
+        <div class="field"><label for="inPort">Port</label><input type="number" id="inPort" value="5005" min="1" max="65535" style="width:100px"></div>
+      </div>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" id="swRec"><span class="track"></span><span class="lbl"><b>Video aufzeichnen</b><span>Speichert in „recordings“, später als Quelle „Aufnahme“ abspielbar</span></span></label>
+      <label class="switch" style="margin-top:14px"><input type="checkbox" id="swScene"><span class="track"></span><span class="lbl"><b>Bei Verlust automatisch sichern</b><span>Die letzten 15 s werden still mitgeführt; geht das Objekt verloren, landen sie als „szene_auto_…“ in „recordings“</span></span></label>
+      <button class="btn block" id="btnScene" style="margin-top:12px">Szene sichern (letzte 15 s)</button>
+      </div>
+    </section>
+    <section class="step" id="step5">
+      <button class="step-h" aria-expanded="false" aria-controls="b5"><span class="n">5</span><span class="t">Feineinstellungen</span><span class="sum" id="sum5"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="step-b" id="b5">
+        <div class="field" style="margin-bottom:14px"><label for="selPreset">Bewegung</label>
+          <select id="selPreset"><option value="band">Band (gleichmäßig, ruhig)</option><option value="hand">Hand (schnell, ruckelig)</option></select></div>
+        <div class="slider"><label for="slHorizon">Vorhersage-Horizont</label><output id="oHorizon"></output><input type="range" id="slHorizon" min="0" max="300" step="10"></div>
+        <div class="slider"><label for="slCoast">Überbrückung bei Verdeckung</label><output id="oCoast"></output><input type="range" id="slCoast" min="100" max="1000" step="50"></div>
+        <div class="slider" id="sliderObj"><label for="slObj">Mindest-Sicherheit (gelernt)</label><output id="oObj"></output><input type="range" id="slObj" min="0.2" max="0.95" step="0.01">
+          <p class="note">Höher = strenger (weniger Fehlerkennung), niedriger = findet das Objekt auch bei Verdeckung eher.</p></div>
+        <div class="slider" id="sliderScore"><label for="slScore">Mindest-Übereinstimmung</label><output id="oScore"></output><input type="range" id="slScore" min="0.5" max="0.99" step="0.01">
+          <p class="note">Höher = strenger (weniger Fehlmessungen), niedriger = findet verdeckte Teile eher.</p></div>
+      
+      </div>
+    </section>
+    <section class="step" id="cardLast" hidden>
+      <button class="step-h" aria-expanded="false" aria-controls="b6"><span class="n">6</span><span class="t">Letzter Lauf</span><span class="sum" id="sum6"></span><svg class="chev" viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+      <div class="step-b" id="b6">
+      <dl class="kv" id="lastRun"></dl>
+      <p class="note" style="margin-top:10px"><a id="csvLink" href="#" download>Messdaten (CSV) herunterladen</a></p>
+      </div>
+    </section>
+    </div>
+    <div class="actions">
+      <button class="btn primary block" id="btnStart">Starten</button>
+      <button class="btn primary block" id="btnLock">Tracking starten</button>
+    </div>
+  </aside>
+
+  <section class="live" aria-label="Live-Ansicht">
     <div class="banner" id="errBanner" role="alert"></div>
     <div class="banner warn" id="connBanner">Verbindung zum Programm getrennt – läuft es noch? (Start-Fenster prüfen)</div>
 
@@ -232,98 +364,6 @@ a { color: var(--accent); }
       <div class="tile"><div class="k">Pose (x · y · θ)</div><div class="v" id="vPose" style="font-size:18px;padding-top:4px">–</div><div class="goal">Pixel, Grad</div></div>
     </div>
   </section>
-
-  <aside>
-    <div class="card">
-      <h2><span class="n">1</span>Quelle</h2>
-      <div class="seg" role="radiogroup" aria-label="Quelle" id="segSource">
-        <button role="radio" data-v="camera">Kamera</button>
-        <button role="radio" data-v="demo">Demo-Band</button>
-        <button role="radio" data-v="replay">Aufnahme</button>
-      </div>
-      <div class="row" id="rowCamera"><div class="field"><label for="selDevice">Kamera</label>
-        <select id="selDevice"><option value="0">Kamera 0 (Standard)</option><option value="1">Kamera 1</option><option value="2">Kamera 2</option><option value="3">Kamera 3</option></select></div></div>
-      <div class="row" id="rowReplay"><div class="field"><label for="selRec">Aufnahme</label><select id="selRec"></select></div></div>
-      <p class="note" id="noteDemo">Simuliertes Band mit Teil – funktioniert ohne Kamera (Erkennung „Bauteil“ mit dem Demo-Teil).</p>
-      <div class="row" style="margin-top:14px"><button class="btn primary block" id="btnStart">Starten</button></div>
-    </div>
-
-    <div class="card">
-      <h2><span class="n">2</span>Erkennung</h2>
-      <div class="seg" role="radiogroup" aria-label="Erkennung" id="segDetector">
-        <button role="radio" data-v="learned">Gelernt</button>
-        <button role="radio" data-v="template">Referenzbild</button>
-        <button role="radio" data-v="hand">Hand</button>
-      </div>
-      <p class="note" id="noteHand">Handerkennung (MediaPipe). Zum Testen ohne Bauteil.</p>
-      <div id="noteNoModel"><p class="note bad">Das Handmodell (7,8 MB, von Google) fehlt noch.</p>
-        <div class="row"><button class="btn small" id="btnModel">Handmodell laden</button></div></div>
-      <div id="learnSection">
-        <p class="note">Das Programm lernt dein Objekt aus etwa 5 Fotos: Objekt in die Kamera halten, <b>einmal anklicken</b>, fertig. Danach findet es das Objekt bei anderem Abstand und leichter Drehung wieder.</p>
-        <div id="noteVision" style="margin-top:10px"><p class="note bad">Dafür fehlen die Bild-Modelle (ca. 133 MB, einmalig, von Hugging Face).</p>
-          <div class="row"><button class="btn small" id="btnVision">Modelle laden</button></div></div>
-        <p class="note" id="noteAccel" style="margin-top:10px" hidden></p>
-        <div class="gallery" id="galleryLearned" role="radiogroup" aria-label="Gelernte Objekte"></div>
-        <div class="row" style="margin-top:12px"><button class="btn small primary" id="btnLearn">Neues Objekt anlernen</button></div>
-      </div>
-      <div id="tplSection">
-        <div class="gallery" id="gallery" role="radiogroup" aria-label="Referenzbilder"></div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn small" id="btnTeachLive">Aus Livebild einlernen</button>
-          <button class="btn small" id="btnTeachFile">Bild laden …</button>
-          <input type="file" id="fileInput" accept="image/*" hidden>
-        </div>
-        <details style="margin-top:12px"><summary>So lernst du ein Teil ein</summary>
-          <ol><li>Teil in der gewünschten <b>Nullstellung</b> vor die Kamera legen.</li>
-          <li>Kamera starten, <b>Aus Livebild einlernen</b> drücken (das Bild friert ein).</li>
-          <li>Rechteck <b>eng um das Teil</b> ziehen, Namen eingeben, speichern.</li>
-          <li>Das neue Referenzbild ist sofort ausgewählt.</li></ol>
-          <p class="note" style="margin-top:8px">Voraussetzungen: gleichbleibender Abstand Kamera–Teil (±10 % Größe verfälscht die Pose), ein asymmetrisches Merkmal am Teil, mindestens ~70 % sichtbar.</p>
-        </details>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2><span class="n">3</span>Tracking</h2>
-      <button class="btn primary block" id="btnLock">Tracking starten</button>
-      <p class="note" id="noteDet" style="margin-top:10px">–</p>
-      <label class="switch" style="margin-top:12px"><input type="checkbox" id="swAuto"><span class="track"></span><span class="lbl"><b>Automatisch einlocken</b><span>Erstes erkanntes Objekt verfolgen, nach Verlust das nächste</span></span></label>
-    </div>
-
-    <div class="card">
-      <h2>Ausgabe &amp; Aufnahme</h2>
-      <label class="switch"><input type="checkbox" id="swOut"><span class="track"></span><span class="lbl"><b>Pose per UDP senden</b><span id="outInfo">An Roboter / Empfänger</span></span></label>
-      <div class="row">
-        <div class="field"><label for="inHost">Adresse</label><input type="text" id="inHost" value="127.0.0.1" style="width:150px" spellcheck="false"></div>
-        <div class="field"><label for="inPort">Port</label><input type="number" id="inPort" value="5005" min="1" max="65535" style="width:100px"></div>
-      </div>
-      <label class="switch" style="margin-top:14px"><input type="checkbox" id="swRec"><span class="track"></span><span class="lbl"><b>Video aufzeichnen</b><span>Speichert in „recordings“, später als Quelle „Aufnahme“ abspielbar</span></span></label>
-      <label class="switch" style="margin-top:14px"><input type="checkbox" id="swScene"><span class="track"></span><span class="lbl"><b>Bei Verlust automatisch sichern</b><span>Die letzten 15 s werden still mitgeführt; geht das Objekt verloren, landen sie als „szene_auto_…“ in „recordings“</span></span></label>
-      <button class="btn block" id="btnScene" style="margin-top:12px">Szene sichern (letzte 15 s)</button>
-    </div>
-
-    <div class="card">
-      <details>
-        <summary>Feineinstellungen</summary>
-        <div class="field" style="margin-bottom:14px"><label for="selPreset">Bewegung</label>
-          <select id="selPreset"><option value="band">Band (gleichmäßig, ruhig)</option><option value="hand">Hand (schnell, ruckelig)</option></select></div>
-        <div class="slider"><label for="slHorizon">Vorhersage-Horizont</label><output id="oHorizon"></output><input type="range" id="slHorizon" min="0" max="300" step="10"></div>
-        <div class="slider"><label for="slCoast">Überbrückung bei Verdeckung</label><output id="oCoast"></output><input type="range" id="slCoast" min="100" max="1000" step="50"></div>
-        <div class="field" id="fieldSpeed" style="margin-bottom:14px"><label for="selSpeed">Tempo (gelerntes Objekt)</label>
-          <select id="selSpeed"><option value="fast">Schnell (weniger genau)</option><option value="balanced">Ausgewogen</option><option value="precise">Genau (336 px, langsamer)</option></select></div>
-        <div class="slider" id="sliderObj"><label for="slObj">Mindest-Sicherheit (gelernt)</label><output id="oObj"></output><input type="range" id="slObj" min="0.2" max="0.95" step="0.01">
-          <p class="note">Höher = strenger (weniger Fehlerkennung), niedriger = findet das Objekt auch bei Verdeckung eher.</p></div>
-        <div class="slider" id="sliderScore"><label for="slScore">Mindest-Übereinstimmung</label><output id="oScore"></output><input type="range" id="slScore" min="0.5" max="0.99" step="0.01">
-          <p class="note">Höher = strenger (weniger Fehlmessungen), niedriger = findet verdeckte Teile eher.</p></div>
-      </details>
-    </div>
-
-    <div class="card" id="cardLast" hidden>
-      <h2>Letzter Lauf</h2>
-      <dl class="kv" id="lastRun"></dl>
-      <p class="note" style="margin-top:10px"><a id="csvLink" href="#" download>Messdaten (CSV) herunterladen</a></p>
-    </div>
-  </aside>
 </main>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -705,6 +745,30 @@ $("#fileInput").onchange = async (e) => {
     const d = await r.json(); if (!r.ok) throw new Error(d.error); loadTeachImage();
   } catch (err) { toast(err.message, true); }
 };
+
+/* ---------- workflow steps (accordion: one open at a time, nothing scrolls) ---------- */
+const STEP_IDS = ["step1", "step2", "step3", "step4", "step5", "cardLast"];
+let openStep = (() => { try { return localStorage.getItem("lockstep.step") || "step1"; } catch (e) { return "step1"; } })();
+function setOpen(id) {
+  openStep = id; try { localStorage.setItem("lockstep.step", id); } catch (e) {}
+  for (const sid of STEP_IDS) { const el = document.getElementById(sid); const on = sid === id; el.classList.toggle("open", on); el.querySelector(".step-h").setAttribute("aria-expanded", on ? "true" : "false"); }
+}
+document.querySelectorAll(".step-h").forEach((b) => (b.onclick = () => setOpen(b.parentElement.id)));
+function renderSteps() {
+  if (!S) return;
+  const st = S.settings, running = S.running;
+  const trunc = (t, n = 26) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
+  $("#sum1").textContent = { camera: "Kamera " + st.device, demo: "Demo-Band", replay: trunc(st.recording || "Aufnahme") }[st.source] + (running ? " · läuft" : "");
+  $("#sum2").textContent = st.detector === "learned" ? (st.learned || "kein Objekt gewählt") : st.detector === "template" ? trunc(st.template) : "Hand";
+  $("#sum3").textContent = running ? (STATE_LABEL[S.state] || "") : "–";
+  $("#sum4").textContent = [st.output_enabled ? "UDP an" : "UDP aus", st.record ? "Aufnahme an" : ""].filter(Boolean).join(" · ");
+  $("#sum5").textContent = ({ band: "Band", hand: "Hand" })[st.preset] + (st.detector === "learned" ? " · " + ({ fast: "schnell", balanced: "ausgewogen", precise: "genau" })[st.speed] : "");
+  $("#learnIntro").hidden = (S.learned || []).length > 0;
+  if (!document.getElementById(openStep) || document.getElementById(openStep).hidden) openStep = "step1";
+  if (!document.querySelector(".step.open")) setOpen(openStep);
+}
+const _render = render; render = function () { _render(); renderSteps(); };
+setOpen(openStep);
 </script>
 </body>
 </html>

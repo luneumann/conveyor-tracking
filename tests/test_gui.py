@@ -75,7 +75,7 @@ def _png(pose=Pose(300, 200, 0.0)) -> bytes:
 
 def test_index_page_served(gui):
     code, body = gui.req("GET", "/")
-    assert code == 200 and b"Conveyor Tracking" in body
+    assert code == 200 and b"Lockstep" in body
 
 
 def test_rejects_cross_site_requests(gui):

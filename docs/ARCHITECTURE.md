@@ -13,11 +13,11 @@ einen Machbarkeitsnachweis; OpenCV und MediaPipe sind nativ beschleunigt, die Py
 nur Orchestrierung (≈ 1 Detektion + 6×6-Kalman pro Frame). 3.11 statt der System-Version 3.14,
 weil MediaPipe nur Wheels bis 3.12 anbietet.
 
-**Alternativen:** C++ (näher an MSS, aber 3–5× Entwicklungsaufwand für den Prototyp);
+**Alternativen:** C++ (näher an Produktivsystemen, aber 3–5× Entwicklungsaufwand für den Prototyp);
 Python 3.12 (wäre ebenfalls möglich, auf dem Rechner nicht installiert).
 
 **Konsequenzen:** GIL — Kamera, Detektion und Ausgabe laufen sequentiell in einem Thread.
-Für ≥ 25 fps ausreichend; falls nicht, Kamera-Grab in eigenen Thread auslagern. Ob MSS-Dienst
+Für ≥ 25 fps ausreichend; falls nicht, Kamera-Grab in eigenen Thread auslagern. Ob ein Dienst
 in Python oder C++ wird, ist offene Frage (PRD 8) — die Kernlogik ist bewusst klein und
 portierbar gehalten.
 
@@ -197,7 +197,7 @@ Laufzeit auf M3, 1280×720: lokal ≈ 25 ms, global ≈ 250 ms (`downscale: 4`) 
 
 ## ADR-010 — Bedienung über lokale Web-Oberfläche (stdlib-HTTP + MJPEG)
 
-**Entscheidung:** `python -m ctrack.gui` (bzw. Doppelklick auf `Conveyor Tracking starten.command`) startet
+**Entscheidung:** `python -m ctrack.gui` (bzw. Doppelklick auf `Lockstep starten.command`) startet
 einen HTTP-Server auf `127.0.0.1:8765` (nächster freier Port bis 8774) und öffnet den Browser. Eine
 Seite (`gui/static/index.html`, ohne Build-Schritt und ohne externe Bibliotheken) bedient Quelle,
 Erkennung, Einlernen, Tracking, Ausgabe, Aufnahme. Das Live-Bild kommt als MJPEG-Stream
@@ -253,7 +253,7 @@ ein Referenzbild trägt weder Abstandsänderung noch Griffwechsel. Ein Kopf auf 
 Trainingsdaten im Hunderterbereich und trainiert in Sekunden. Alle Komponenten sind Apache-2.0/MIT und laufen mit
 `onnxruntime` auf der CPU.
 
-**Alternativen:** YOLO(-OBB) feinjustieren (braucht Hunderte Bilder; Ultralytics ist AGPL — Lizenzfrage für VMT);
+**Alternativen:** YOLO(-OBB) feinjustieren (braucht Hunderte Bilder; Ultralytics ist AGPL — Lizenzfrage für kommerziellen Einsatz);
 SAM-2-Videotracking (schwer, kein dauerhaftes Anlernen, kein Wiederfinden); OpenCV-Tracker (finden nichts, nur Box);
 SIFT/ORB-Merkmale (brauchen Textur; dunkle glatte Objekte fallen durch); Farbsegmentierung (nur farbige Objekte).
 

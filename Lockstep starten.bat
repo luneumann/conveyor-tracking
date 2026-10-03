@@ -22,7 +22,7 @@ exit /b 1
 .venv\Scripts\python.exe -m pip install -q -e . || goto :fail
 
 :run
-echo Starte Conveyor Tracking ...
+echo Starte Lockstep ...
 .venv\Scripts\python.exe -m ctrack.gui
 echo.
 pause

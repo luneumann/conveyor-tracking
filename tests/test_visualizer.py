@@ -21,8 +21,9 @@ def test_segment_is_filled_in_the_state_colour():
     img = OverlayRenderer(hud=False).render(_step(TrackState.TRACKING, det, Pose(100, 100, 0.0), 1.0), {})
     inside, outside = img[110, 90].astype(int), img[10, 10].astype(int)
     assert np.allclose(outside, 90)
-    assert np.linalg.norm(inside - 90) > 20 and inside[1] > inside[0]            # tinted green (TRACKING)
-    assert STATE_COLORS[TrackState.TRACKING][1] > STATE_COLORS[TrackState.TRACKING][0]
+    assert np.linalg.norm(inside - 90) > 20 and inside[0] > inside[1]            # tinted blue (TRACKING, BGR)
+    b, g, r = STATE_COLORS[TrackState.TRACKING]
+    assert b > g > 0 and b > r and g < 200                                       # a calm azure, not neon green
 
 
 def test_old_segment_follows_the_tracked_pose():
