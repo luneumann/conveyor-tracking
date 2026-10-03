@@ -1,13 +1,14 @@
-# Lockstep (`ctrack`) — kamerabasierter virtueller Encoder
+# Camtrack (`ctrack`) — Pose-Tracking per Kamera
 
-Kameragestützter "virtueller Encoder": ein Objekt einlocken, seine Pose (x, y, θ) verfolgen,
-latenzkompensiert prädizieren und als UDP/JSON-Stream an einen (simulierten) Roboter senden.
+Kamerabasiertes Tracking für beliebige Objekte: ein Objekt einmal einlernen oder einlocken, seine Pose (x, y, θ) fortlaufend verfolgen,
+latenzkompensiert vorhersagen und als UDP/JSON-Stream ausgeben (z. B. an einen Roboter oder als „virtueller Encoder“ für ein Förderband).
+Der Name: **c** wie camera, **track** wie tracking.
 
 **Stack:** Python 3.11 · OpenCV · MediaPipe Tasks (Hand) · ONNX Runtime (MobileSAM, DINOv2) · NumPy (Kalman) · lokale Web-GUI (stdlib) · YAML-Config · UDP/JSON
 
 ## Schnellstart (ohne Terminal)
 
-**Doppelklick auf `Lockstep starten.command` (Mac) bzw. `Lockstep starten.bat` (Windows, siehe SETUP.md).** Beim ersten Mal richtet es die Umgebung ein, danach
+**Doppelklick auf `Camtrack starten.command` (Mac) bzw. `Camtrack starten.bat` (Windows, siehe SETUP.md).** Beim ersten Mal richtet es die Umgebung ein, danach
 öffnet sich im Browser die Oberfläche (`http://127.0.0.1:8765`):
 
 1. **Quelle** wählen: *Kamera*, *Demo-Band* (simuliert, ohne Kamera) oder *Aufnahme* → **Starten**.

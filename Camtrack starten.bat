@@ -22,7 +22,7 @@ exit /b 1
 .venv\Scripts\python.exe -m pip install -q -e . || goto :fail
 
 :run
-echo Starte Lockstep ...
+echo Starte Camtrack ...
 .venv\Scripts\python.exe -m ctrack.gui
 echo.
 pause

@@ -239,7 +239,7 @@ def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
     if server is None:
         raise SystemExit(f"Ports {port}-{port + 9} sind belegt. Läuft die Oberfläche schon?")
     url = f"http://127.0.0.1:{Handler.port}/"
-    print(f"Lockstep läuft: {url}\n(Beenden mit Ctrl+C oder Fenster schließen)", flush=True)
+    print(f"Camtrack läuft: {url}\n(Beenden mit Ctrl+C oder Fenster schließen)", flush=True)
     if open_browser:
         threading.Timer(0.6, webbrowser.open, args=(url,)).start()
     try:
@@ -254,7 +254,7 @@ def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
-    p = argparse.ArgumentParser(prog="ctrack-gui", description="Web GUI for the conveyor tracking prototype")
+    p = argparse.ArgumentParser(prog="ctrack-gui", description="Camtrack web GUI")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-browser", action="store_true", help="do not open the browser automatically")
     p.add_argument("--root", type=Path, default=Path.cwd(), help="project folder (templates/, logs/, models/)")

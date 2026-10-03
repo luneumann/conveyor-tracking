@@ -14,7 +14,7 @@ if [ ! -x .venv/bin/python ]; then
     echo "Einrichtung fehlgeschlagen."; read -r -p "Enter zum Beenden ..." _; exit 1; }
 fi
 
-echo "Starte Lockstep ..."
+echo "Starte Camtrack ..."
 .venv/bin/python -m ctrack.gui
 echo
 read -r -p "Beendet. Enter zum Schließen ..." _

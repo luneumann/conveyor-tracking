@@ -197,7 +197,7 @@ Laufzeit auf M3, 1280×720: lokal ≈ 25 ms, global ≈ 250 ms (`downscale: 4`) 
 
 ## ADR-010 — Bedienung über lokale Web-Oberfläche (stdlib-HTTP + MJPEG)
 
-**Entscheidung:** `python -m ctrack.gui` (bzw. Doppelklick auf `Lockstep starten.command`) startet
+**Entscheidung:** `python -m ctrack.gui` (bzw. Doppelklick auf `Camtrack starten.command`) startet
 einen HTTP-Server auf `127.0.0.1:8765` (nächster freier Port bis 8774) und öffnet den Browser. Eine
 Seite (`gui/static/index.html`, ohne Build-Schritt und ohne externe Bibliotheken) bedient Quelle,
 Erkennung, Einlernen, Tracking, Ausgabe, Aufnahme. Das Live-Bild kommt als MJPEG-Stream
