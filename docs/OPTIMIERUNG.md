@@ -210,3 +210,28 @@ Schritte, Abgleich mit der erwarteten Verschiebung des Filters; ebenso eine Gesc
 **Deshalb nicht eingebunden.** Der Test ist an *ruckartiger Handbewegung* gemessen, dem schwierigsten Fall für Fluss; ein gleichmäßig laufendes Band (das Ziel)
 ist günstiger für den Fluss, aber dort ist auch das Kalman-Modell mit konstanter Geschwindigkeit bereits gut. Ob sich die Einbindung lohnt, sollte an einer
 Bandaufnahme entschieden werden. Neu ist außerdem `Detection.noise_scale` (Messrauschen je Messung), vorbereitet für gewichtete Fluss-Messungen.
+
+## 12. Test auf einem Bildschirmvideo: Karosse auf Förderband (03.10.2026)
+
+**Material:** Bildschirmaufnahme eines Stock-Videos (Karosse auf Förderband, Kamera schwenkt und zoomt leicht, 344 Bilder, 27 fps, 1534×862, mit Wasserzeichen). Liegt lokal
+in `recordings/` und wird nicht committet. Labels (Boxen) in `tools/eval_labels_belt.json`. Angelernt mit 5 Bildern, **ohne** leere Szenen (das Objekt ist immer im Bild);
+gemessen auf 6 anderen Bildern (Referenzmasken per SAM, visuell geprüft).
+
+| Kennzahl | Wert |
+|---|---|
+| IoU Maske (Median / p10) | 0,79 / 0,77 |
+| Mittelpunktfehler (% der Objektgröße, Median / p90) | 1,9 / 2,3 |
+| Winkelfehler (Median / p90) | 0,5° / 1,6° |
+| Bilder mit Treffer bei Erkennung je Bild, Standardeinstellung | 330 von 344 (Fehlstellen v. a. am Bildrand, wo die Karosse abgeschnitten ist) |
+
+**Echtzeit-Simulation** (asynchron, Kalman „Band"-Profil, mit Vorhersage-Hinweis), Anteil Bilder TRACKING / verloren:
+Neural Engine 140 px: 98 % / 0 % · 168 px: 91 % / 0 % · 168 + 336 px Verfeinerung („Genau"): 96 % / 0 % · nur CPU 168 px: 89 % / 0 %.
+Schwankung zwischen Läufen ca. ±5 Prozentpunkte.
+
+**Fluss-Zwischentracking auf diesem Video** (Abschnitt 11, gleiche Simulation): Positionsfehler Median 7,8 → 7,1 px, p90 21,7 → 18,3 px bei einer Erkennung alle 2 Bilder;
+bei gleichmäßiger Bewegung also kein Schaden mehr, aber auch nur ein kleiner Gewinn, weil das Kalman-Profil „Band" schon gut ist. Nur bei sehr seltenen Erkennungen
+(alle 8 Bilder = 3 Hz) hält der Fluss das Objekt im Verfolgen, wo die Kalman-Variante es verliert (308 statt 33 von 310 Bildern). Mit den schnellen Erkennungsraten dieser
+Maschine bleibt er nicht nötig.
+
+**Grenzen:** Ein einziges Objekt, ein einziges Video, 6 Testbilder, Stock-Szene (kein echter Aufbau, keine mm). Aussagekräftig ist vor allem: das Verfahren trägt auf einem
+großen, gleichmäßig bewegten Objekt, auch mit schwenkender Kamera.

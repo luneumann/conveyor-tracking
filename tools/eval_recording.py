@@ -112,7 +112,10 @@ def main() -> None:
             return out
 
         other = [i for k, v in lab["objects"].items() if k != name for i in range(v["present"][0], v["present"][1], 15)]
-        neg = {"leere Szene": scores(empty_test), "anderes Objekt": scores(other)}
+        neg = {k: v for k, v in (("leere Szene", scores(empty_test)), ("anderes Objekt", scores(other))) if v}
+        if not neg:
+            print("(keine Negativ-Bilder in den Labels: keine Fehlalarm-Tabelle)")
+            continue
         print(f"{'Schwelle':>9} | {'Treffer':>8} | " + " | ".join(f"{k} ({len(v)})" for k, v in neg.items()) + "   (Fehlalarm-Anteil)")
         for t in THRESHOLDS:
             fa = " | ".join(f"{np.mean(np.array(v) >= t) * 100:>{len(k) + 5}.0f} %" for k, v in neg.items())
