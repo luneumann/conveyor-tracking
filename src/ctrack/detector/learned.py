@@ -31,7 +31,7 @@ class LearnedObjectDetector(Detector):
     def __init__(self, model_path: str, models_dir: str = "models", min_score: float = 0.6,
                  threshold: float = 0.5, crop_factor: float = 1.8, global_width: int = 448,
                  global_interval: int = 3, view_size: int = 168, refine_size: int = 0,
-                 acquire_margin: float = 0.2, feature_mode: str = "auto") -> None:
+                 acquire_margin: float = 0.2, feature_mode: str = "auto", feature_quality: str = "fast") -> None:
         if not Path(model_path).exists():
             raise FileNotFoundError(f"Gelerntes Objekt nicht gefunden: {model_path}")
         self.model = ObjectModel.load(Path(model_path))
@@ -44,7 +44,7 @@ class LearnedObjectDetector(Detector):
         # Big objects: the pose comes from image features inside the mask (see features.py) instead of the mask's centroid.
         # off | auto (on when the taught object was big in the image) | on. Needs features stored with the object.
         self.feature_mode = feature_mode
-        self._fr = FeatureRefiner(self.model.feat) if self.model.feat is not None else None
+        self._fr = FeatureRefiner(self.model.feat, quality=feature_quality) if self.model.feat is not None else None
         self.threshold = threshold
         self.crop_factor = crop_factor
         self.global_width = global_width
@@ -60,7 +60,17 @@ class LearnedObjectDetector(Detector):
         self._global_ms = 1e9                 # duration of the last whole-frame search (unknown at start: assume slow)
         self.warm_up()
         self._last: tuple[float, float, float, float] | None = None   # x, y, theta, long side (px)
+        self._last_contour: np.ndarray | None = None
         self._misses = 0
+
+    @property
+    def feature_quality(self) -> str:
+        return self._fr.quality if self._fr is not None else "fast"
+
+    @feature_quality.setter
+    def feature_quality(self, value: str) -> None:
+        if self._fr is not None:
+            self._fr.quality = value
 
     @property
     def use_features(self) -> bool:
@@ -162,8 +172,17 @@ class LearnedObjectDetector(Detector):
                 return det                                   # same spot anyway: a second try would repeat the first
         return self._crop_search(img)
 
+    def close(self) -> None:
+        if self._fr is not None:
+            self._fr.close()
+
     def detect(self, frame: Frame) -> Detection | None:
         img = frame.image
+        # The feature extraction for the pose does not depend on this frame's mask (it uses the area where the object was
+        # last seen), so it runs in a worker thread WHILE the detector below works: its time is hidden, not added.
+        pending = None
+        if self._fr is not None and self.use_features and self._last_contour is not None:
+            pending = self._fr.prepare(img, self._last_contour)
         det = self._tracked_search(img) if self._last is not None else None
         if det is None:
             self._since_global += 1
@@ -182,6 +201,7 @@ class LearnedObjectDetector(Detector):
         if det is None:
             if self._misses >= MAX_MISSES:
                 self._last = None
+                self._last_contour = None
                 if self._fr is not None:
                     self._fr.reset()
             return None
@@ -190,6 +210,7 @@ class LearnedObjectDetector(Detector):
         xs, ys = det.contour[:, 0], det.contour[:, 1]
         long_side = float(math.hypot(xs.max() - xs.min(), ys.max() - ys.min()))   # diagonal: rotation-safe size
         self._last = (det.x, det.y, det.theta, long_side / 1.2)      # searches stay centred on the MASK
+        self._last_contour = det.contour
         if self._fr is not None and self.use_features:
-            return self._fr.refine(img, det)
+            return self._fr.refine(img, det, pending)
         return det

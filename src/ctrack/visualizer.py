@@ -16,6 +16,7 @@ STATE_COLORS = {
     TrackState.COASTING: (0, 190, 255),
     TrackState.LOST: (60, 60, 230),
 }
+FEATURE_COLOR = (255, 255, 255)   # the small feature region the pose is taken from
 X_COLOR, Y_COLOR, PRED_COLOR = (80, 80, 255), (245, 245, 245), (230, 110, 200)
 
 
@@ -83,26 +84,39 @@ class OverlayRenderer:
         return img
 
     @staticmethod
-    def _segment(img: np.ndarray, det, step: StepResult) -> None:
-        """The detected object's outline as a filled, translucent segment in the state colour.
-
-        With asynchronous detection the outline is a few frames old; it is moved and turned by the way the tracked
-        pose has moved since, so the segment sits on the object in the live image instead of trailing behind it."""
-        pts = np.asarray(det.contour, np.float32)
+    def _follow(pts: np.ndarray, det, step: StepResult) -> np.ndarray:
+        """Outline points of a possibly older detection, moved and turned by the way the tracked pose has moved since."""
+        pts = np.asarray(pts, np.float32)
         if step.pose is not None and step.detection_t is not None and step.detection_t < step.frame.t_exposure:
             dth = wrap_angle(step.pose.theta - det.theta)
             if abs(dth) < 0.6:
                 c, s_ = math.cos(dth), math.sin(dth)
                 rel = pts - (det.x, det.y)
-                pts = np.column_stack([c * rel[:, 0] - s_ * rel[:, 1], s_ * rel[:, 0] + c * rel[:, 1]]) + (step.pose.x, step.pose.y)
-            else:
-                pts = pts + (step.pose.x - det.x, step.pose.y - det.y)
-        poly = np.round(pts).astype(np.int32)
+                return np.column_stack([c * rel[:, 0] - s_ * rel[:, 1], s_ * rel[:, 0] + c * rel[:, 1]]) + (step.pose.x, step.pose.y)
+            return pts + (step.pose.x - det.x, step.pose.y - det.y)
+        return pts
+
+    @classmethod
+    def _segment(cls, img: np.ndarray, det, step: StepResult) -> None:
+        """The detected object's outline as a filled, translucent segment in the state colour (the big thing that is found),
+        plus - when a feature anchor is used - the small feature region the position is taken from.
+
+        With asynchronous detection the outline is a few frames old; it is moved and turned by the way the tracked
+        pose has moved since, so the segment sits on the object in the live image instead of trailing behind it."""
+        poly = np.round(cls._follow(det.contour, det, step)).astype(np.int32)
         color = STATE_COLORS[step.state] if step.state is not TrackState.SEARCHING else (210, 190, 40)
         fill = img.copy()
         cv2.fillPoly(fill, [poly], color)
         cv2.addWeighted(fill, 0.35, img, 0.65, 0, dst=img)
         cv2.polylines(img, [poly], True, color, 2, cv2.LINE_AA)
+        if det.feature is not None:
+            fp = np.round(cls._follow(det.feature, det, step)).astype(np.int32)
+            cv2.polylines(img, [fp], True, (0, 0, 0), 5, cv2.LINE_AA)          # dark outline first: visible on any background
+            if det.feature_matched:
+                cv2.polylines(img, [fp], True, FEATURE_COLOR, 2, cv2.LINE_AA)
+            else:                                                              # only where the mask predicts it: dashed
+                for i in range(4):
+                    _dashed_line(img, tuple(fp[i]), tuple(fp[(i + 1) % 4]), FEATURE_COLOR, 2, dash=7.0)
 
     def _hud(self, img: np.ndarray, step: StepResult, stats: dict[str, float]) -> None:
         lines = [

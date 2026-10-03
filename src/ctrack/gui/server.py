@@ -84,10 +84,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/learn/mask.png":
                 png = self.engine.learn_mask_png()
                 return self._send(200, png, "image/png") if png else self._error(404, "no mask")
-            m = re.fullmatch(r"/api/learn/sample/(\d+)/full\.jpg", path)
-            if m:
-                jpg = self.engine.learn_sample_full_jpg(int(m.group(1)))
-                return self._send(200, jpg, "image/jpeg") if jpg else self._error(404, "not found")
             m = re.fullmatch(r"/api/learn/sample/(\d+)\.jpg", path)
             if m:
                 jpg = self.engine.learn_sample_jpg(int(m.group(1)))
@@ -176,12 +172,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/learn/empty/clear":
                 e.learn_empty_clear()
                 return self._json(e.snapshot())
-            if path == "/api/learn/region":
-                d = self._json_body(raw)
-                e.learn_set_region([d["x"], d["y"], d["w"], d["h"]] if "x" in d else None)
-                return self._json(e.snapshot())
             if path == "/api/learn/add":
-                return self._json({"count": e.learn_add()})
+                return self._json({"count": e.learn_add(self._json_body(raw).get("roi"))})
             if path == "/api/learn/remove":
                 e.learn_remove(int(self._json_body(raw).get("index", -1)))
                 return self._json(e.snapshot())

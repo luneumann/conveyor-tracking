@@ -64,11 +64,15 @@ Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil
 7. Name eintragen → **Trainieren** (ca. 15 s; beim allerersten Mal ca. 40 s, siehe unten). Danach ist das Objekt aktiv;
    **Tracking starten**.
 
-**Große Objekte (z. B. Karosse):** Die Pose aus der ganzen Maske kann schwanken. Darum verfolgt ctrack bei großen Objekten zusätzlich Bildmerkmale im Objekt
-(Einstellung **Merkmals-Tracking** im Schritt „Tracking“: *Automatisch* / *Immer an* / *Aus*; automatisch = an, wenn das Objekt beim Anlernen breiter als ca. 20 % des Bildes war).
-*Optional:* Beim Anlernen auf **Merkmalsregion …** drücken und auf dem **ersten Foto** ein Rechteck um den Bereich ziehen, dessen Merkmal verfolgt werden soll (z. B. Tür, Logo, Scheinwerfer,
-mit Kanten oder Beschriftung, keine glatte Fläche). Dessen Mitte wird der Bezugspunkt der Pose. Ohne Region ist der Bezugspunkt die Mitte des Objekts auf dem ersten Foto. Nach dem Trainieren meldet die Oberfläche,
-ob genug Merkmale gefunden wurden („Merkmals-Tracking bereit …“ oder „Zu wenige Merkmale … es wird die Maske genutzt“). Hintergrund: ADR-014.
+**Große Objekte (z. B. Karosse): Merkmal markieren.** Die Pose aus der ganzen Maske schwankt bei großen Objekten. Wie beim Türgriff eines Autos: ctrack findet das ganze Objekt (leicht)
+und nimmt die verlässliche Position aus einem kleinen Merkmal darauf.
+1. Beim Anlernen, nachdem die Maske steht: **Merkmal markieren** drücken und ein **kleines Rechteck um dasselbe Merkmal** ziehen (z. B. Türgriff, Logo, Scheinwerfer). Das Merkmal sollte Struktur haben
+   (Kanten, Beschriftung, Spalten), keine glatte Fläche. **Auf jedem Foto dieselbe Stelle des Objekts** markieren; markierte Fotos haben ein blaues Quadrat in der Vorschau.
+   Mindestens ein Foto markieren; Fotos ohne Markierung übernehmen die Stelle automatisch.
+2. Nach dem Trainieren meldet die Oberfläche, ob es geklappt hat („Merkmals-Tracking bereit …“, ggf. mit Warnung, wenn die Markierungen voneinander abweichen, oder „Zu wenige Merkmale …“ → es wird die Maske genutzt).
+3. Im Livebild siehst du beide: das **große Objekt** (farbiges Segment) und das **markierte Merkmal** (weißes Rechteck, gestrichelt, wenn es gerade nur aus der Maske abgeleitet ist). Die Position der Pose ist die Mitte des Merkmals.
+4. Einstellungen im Schritt „Tracking“: **Merkmals-Tracking** *Automatisch* (an, wenn das Objekt beim Anlernen breiter als ca. 20 % des Bildes war) / *Immer an* / *Aus*; **Merkmals-Genauigkeit**
+   *Schnell* (ca. 1–2 px, kostet ca. 9 ms je Bild) / *Genau* (ca. 0,5 px, ca. 24 ms). Ohne Markierung gilt die Mitte des Objekts auf dem ersten Foto als Bezugspunkt. Hintergrund: ADR-014.
 
 Tipps: Je unterschiedlicher die 5 Fotos, desto robuster. Wird fälschlich etwas anderes erkannt: **Mindest-Sicherheit**
 (Feineinstellungen) erhöhen oder mit mehr/anderen Fotos neu anlernen. Ist es zu langsam: **Tempo** auf *Schnell*

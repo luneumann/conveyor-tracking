@@ -322,3 +322,11 @@ bei fehlgeschlagenem Abgleich Rückfall auf die Maske, **in derselben Anker-Konv
 
 **Umgesetzt (03.10.2026):** `src/ctrack/features.py`, Anlern-Dialog mit optionaler Merkmalsregion, Schalter „Merkmals-Tracking“ (Aus/Automatisch/An), siehe ADR-014. Gemessen mit dem fertigen Detektor (nicht nur Prototyp):
 Rauschen x 8,64 → **0,46 px**, y 4,38 → **0,19 px** (Median), p90 x 25,7 → 2,4 px; Zeit je Bild 42 → 61 ms. Die Abdeckung schwankte zwischen zwei Läufen leicht (96 % / 94 %), vermutlich Lastschwankung des Rechners.
+
+**Nachtrag (03.10.2026, nach Nutzerhinweis „wie beim Türgriff“):** Der Nutzer wollte die Merkmalsposition auf **jedem** Foto markieren und im Tracking nur in einem kleinen Bereich relativ zur gefundenen Karosse suchen. Gemessen:
+- Das kleine Merkmalsgebiet allein (14 % der Objektgröße um die Tür) hat nur **0–8 SIFT-Schlüsselpunkte**; zwischen Fotos stimmen auch bei 30 %-Gebieten nur 4–7 überein. Kein verlässlicher Abgleich.
+- Dichter Schablonenabgleich (NCC) des Gebiets im kleinen Fenster: ca. 15 ms, aber 7 px Rauschen.
+- SIFT in der Nachbarschaft (30 %): nur 265 von 344 Bildern abgeglichen, Ausreißer.
+- **Umgesetzt:** Markierung je Foto legt Anker und Anzeige fest; abgeglichen wird das ganze Objekt (im Begrenzungsrahmen der Maske), mit Plausibilitätsprüfung gegen die aus der Maske erwartete Stelle, ORB (schnell) oder SIFT (genau),
+  Extraktion parallel zum Detektor. Rauschen Maske 39 / 22 px → 0,5 / 0,25 px; Anzeige von Objekt **und** Merkmal. Details ADR-014.
+- Zeit: Merkmalsextraktion kostet bei SIFT ca. 22–25 ms (unabhängig von der Merkmalszahl; Abgleich nur ca. 1,4 ms), bei SIFT mit auf 300 px normierter Objektgröße ca. 13–15 ms, bei ORB ca. 4 ms. Schneller und gleich genau wird es vor allem durch ORB und die Parallelität.

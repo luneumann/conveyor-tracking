@@ -250,7 +250,7 @@ def test_learn_flow_click_segment_add_train_and_detect(gui_vision):
     assert g.post("/api/learn/train", {"name": "../x"})[0] == 400
 
     assert g.post("/api/learn/train", {"name": "synth"})[0] == 200
-    st = g.wait(lambda s: s["learn"]["phase"] in ("done", "error"), timeout=60)
+    st = g.wait(lambda s: s["learn"]["phase"] in ("done", "error"), timeout=150)   # ~15 s on an idle Mac, much more under load
     assert st["learn"]["phase"] == "done", st["learn"]
     assert st["settings"]["detector"] == "learned" and st["settings"]["learned"] == "synth"
     assert [o["name"] for o in st["learned"]] == ["synth"] and st["learned"][0]["images"] == 3
@@ -259,7 +259,8 @@ def test_learn_flow_click_segment_add_train_and_detect(gui_vision):
 
     g.post("/api/settings", {"source": "demo"})
     g.post("/api/session", {"action": "start"})
-    st = g.wait(lambda s: s["running"] and s["detected"], timeout=40)
+    st = g.wait(lambda s: (s["running"] and s["detected"]) or s["error"], timeout=40)
+    assert st["error"] is None, st["error"]
     assert st["score"] >= 0.6
     g.post("/api/command", {"name": "lock"})
     st = g.wait(lambda s: s["state"] == "TRACKING", timeout=20)
@@ -372,21 +373,21 @@ def test_screen_recordings_in_other_containers_can_be_replayed(gui):
     gui.post("/api/session", {"action": "stop"})
 
 
-def test_learn_region_endpoints_and_feature_mode_setting(gui):
+def test_feature_mode_setting_and_regions_marked_per_photo(gui):
     assert gui.post("/api/settings", {"feature_mode": "bogus"})[0] == 400
+    assert gui.post("/api/settings", {"feature_quality": "bogus"})[0] == 400
+    assert gui.post("/api/settings", {"feature_quality": "precise"})[0] == 200
     code, d = gui.post("/api/settings", {"feature_mode": "on"})
     assert code == 200 and d["settings"]["feature_mode"] == "on"
-    assert gui.post("/api/learn/region", {"x": 10, "y": 10, "w": 100, "h": 100})[0] == 400      # no photo taken yet
-    gui.root.joinpath("x").mkdir(exist_ok=True)
     e = Handler.engine
     img = np.full((300, 400, 3), 90, np.uint8)
-    e._learn_samples.append((img, np.ones((300, 400), bool)))
-    e._learn_thumbs.append(b"t")
-    code, d = gui.post("/api/learn/region", {"x": 50, "y": 40, "w": 120, "h": 90})
-    assert code == 200 and d["learn"]["region"] is True
-    assert gui.post("/api/learn/region", {"x": 5, "y": 5, "w": 10, "h": 10})[0] == 400             # too small
-    code, jpg = gui.req("GET", "/api/learn/sample/0/full.jpg")
-    assert code == 200 and jpg[:2] == b"\xff\xd8"
-    assert gui.req("GET", "/api/learn/sample/5/full.jpg")[0] == 404
-    code, d = gui.post("/api/learn/region", {})
-    assert code == 200 and d["learn"]["region"] is False
+    e._teach_frame, e._learn_mask = img, np.ones((300, 400), bool)
+    code, d = gui.post("/api/learn/add", {"roi": [50, 40, 120, 90]})
+    assert code == 200 and d["count"] == 1
+    e._teach_frame, e._learn_mask = img, np.ones((300, 400), bool)
+    assert gui.post("/api/learn/add", {"roi": [5, 5, 10, 10]})[0] == 400          # region too small
+    assert gui.post("/api/learn/add", {})[0] == 200                                 # photo without a region is fine
+    st = gui.status()["learn"]
+    assert st["count"] == 2 and st["regions"] == [True, False]
+    gui.post("/api/learn/remove", {"index": 0})
+    assert gui.status()["learn"]["regions"] == [False]

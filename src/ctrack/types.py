@@ -63,6 +63,8 @@ class Detection:
     confidence: float
     keypoints: np.ndarray | None = field(default=None, compare=False)
     contour: np.ndarray | None = field(default=None, compare=False)  # (n, 2) outline in frame pixels, for the overlay
+    feature: np.ndarray | None = field(default=None, compare=False)  # (4, 2) the small feature region used for the pose (frame pixels)
+    feature_matched: bool = False   # False: the feature region is only where the mask predicts it (no match this frame)
     noise_scale: float = 1.0   # >1: a less trustworthy measurement (e.g. optical-flow propagation), scales the position std
 
     @property

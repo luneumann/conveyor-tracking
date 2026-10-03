@@ -407,7 +407,7 @@ def test_feature_mode_switch_and_hint_offset(trained):
     path, _ = trained
     det = LearnedObjectDetector(str(path), models_dir=str(MODELS))
     assert not det.use_features                                   # object taught without features: mask pose
-    view = FeatureView(np.zeros((12, 2), np.float32), np.zeros((12, 128), np.float32), np.zeros(2, np.float32), 0.0)
+    view = FeatureView(np.zeros((12, 2), np.float32), np.zeros((12, 128), np.float32), np.zeros(2, np.float32), 0.0, np.zeros(2, np.float32), 100.0)
     for large, mode, expect in ((True, "auto", True), (False, "auto", False), (False, "on", True), (True, "off", False)):
         det._fr = FeatureRefiner(FeatureModel([view], large=large))
         det.feature_mode = mode

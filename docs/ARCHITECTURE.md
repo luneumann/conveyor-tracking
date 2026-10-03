@@ -385,22 +385,32 @@ Gesamtsystem (Demo-Band, gelerntes Objekt, asynchrone Erkennung): 30 fps (= Kame
 ## ADR-014 — Merkmals-Anker für große Objekte (Pose aus Bildmerkmalen statt aus dem Maskenrand)
 
 **Kontext:** Bei großen Objekten (Karosse) schwankt die Pose aus Maskenschwerpunkt und Hauptachse stark, weil jeder Fehler am langen Maskenrand
-sie verschiebt. Gemessen auf einem Förderband-Video: Rauschen (Median der zweiten Differenz) 8,6 px in x, 4,4 px in y; p90 25,7 / 13,6 px.
+sie verschiebt. Gemessen auf einem Förderband-Video: Rauschen (Median der zweiten Differenz der Position) 28–45 px in x, 20–23 px in y (Erkennung je Bild, unter Rechnerlast).
+Gedanke des Nutzers: wie beim Türgriff eines Autos – das ganze Fahrzeug ist leicht zu finden, die verlässliche Position kommt aus einem Feinmerkmal relativ dazu.
 
-**Entscheidung:** Die Maske liefert nur die grobe Lage (Suchgebiet, wie bisher). Die Pose kommt aus SIFT-Merkmalen innerhalb dieses Gebiets
-(`src/ctrack/features.py`): Referenzmerkmale der Anlernfotos werden im aktuellen Bild gefunden, eine Ähnlichkeitstransformation (RANSAC) bildet einen
-**festen Ankerpunkt** des Objekts ins Bild ab, ihre Drehung liefert θ. Anker = Mitte einer optional vom Nutzer markierten **Merkmalsregion** (dann zählen
-nur Merkmale dort), sonst Maskenschwerpunkt des ersten Fotos. Weil die Fotos aus verschiedenen Abständen/Winkeln stammen, wird der Anker über die jeweils
-besten Merkmalsabgleiche zwischen den Fotos in jedes Foto getragen. Merkmale werden bei auf ca. 600 px Diagonale normierter Objektgröße berechnet (vergleichbar über Abstände).
-
-- **Aus / Automatisch / An** (Voreinstellung automatisch): automatisch ist an, wenn das Objekt beim Anlernen breiter als 20 % des Bildes war. Kleine Objekte brauchen es nicht.
-- **Rückfall bei fehlendem Abgleich** (< 10 stimmige Merkmale): der Anker wird aus der Maske abgeleitet, **mit dem zuletzt gemessenen Versatz Anker–Maskenschwerpunkt im Objektkoordinatensystem**,
+**Entscheidung** (`src/ctrack/features.py`): Die Maske (SAM-Anlernen + DINO-Kopf) findet das große Objekt und begrenzt die Suche. Die Pose kommt aus Bildmerkmalen darauf:
+Referenzmerkmale der Anlernfotos werden im aktuellen Bild gefunden, eine Ähnlichkeitstransformation (RANSAC) bildet einen **festen Ankerpunkt** ins Bild ab, ihre Drehung liefert θ.
+- **Anker:** Mitte des Merkmals, das der Nutzer beim Anlernen **auf den Fotos markiert** (Rechteck, auf jedem Foto dieselbe Stelle, z. B. Türgriff), sonst der Maskenschwerpunkt des ersten Fotos.
+  Fotos ohne Markierung erhalten Anker und Regionsgröße über die besten Merkmalsabgleiche zu den markierten Fotos. Markierungen auf mehreren Fotos werden gegeneinander geprüft
+  (Abweichung in % der Objektgröße; die Oberfläche warnt ab 6 %).
+- **Anzeige:** Im Livebild sind **beide** sichtbar: das große Objekt als farbiges Segment und das kleine Merkmal als weißes Rechteck (gestrichelt, wenn es gerade nur aus der Maske abgeleitet ist).
+- **Deskriptoren:** Je Foto werden SIFT (genau, ca. 0,5 px) und ORB (schnell) abgelegt; Einstellung „Merkmals-Genauigkeit“ Schnell/Genau. Merkmale werden bei auf ca. 300 (SIFT) bzw. 400 px (ORB) Diagonale normierter Objektgröße berechnet.
+- **Schalter:** Aus / Automatisch / An (Voreinstellung automatisch: an, wenn das Objekt beim Anlernen breiter als 20 % des Bildes war).
+- **Schnell und sicher:** Gesucht wird nur im Begrenzungsrahmen der Maske (+15 %); ein Treffer, dessen Anker mehr als 15 % der Objektgröße von der aus der Maske erwarteten Stelle abweicht, gilt als Fehltreffer.
+  Die Merkmalsextraktion läuft **parallel zum Detektor** (auf dem zuletzt gesehenen Bereich, die Rechenzeit wird dadurch zum Teil verdeckt statt addiert).
+- **Rückfall** bei fehlendem/unplausiblem Abgleich (< 10 stimmige Merkmale): Anker und Merkmalsrechteck werden aus der Maske abgeleitet, **mit dem zuletzt gemessenen Versatz im Objektkoordinatensystem**,
   damit die Pose nicht zwischen zwei Bezugspunkten springt. Vor dem ersten Erfolg: Maskenpose.
 - Suchausschnitt und Vorhersage-Hinweis bleiben auf den **Maskenschwerpunkt** zentriert (der Hinweis wird um den Versatz zurückgerechnet).
-- Features liegen in derselben Datei wie das Objekt (`models/objects/<name>.npz`, Schlüssel `feat_*`); ältere Modelle ohne Merkmale funktionieren unverändert.
+- Alles liegt in derselben Datei wie das Objekt (`models/objects/<name>.npz`, Schlüssel `feat_*`/`featf_*`); ältere Modelle ohne Merkmale funktionieren unverändert.
 
-**Ergebnis** (Karosse-Video, Erkennung je Bild, Anker = Tür): Rauschen x **0,46 px** (vorher 8,64), y **0,19 px** (4,38), p90 x 2,4 (25,7), y 1,2 (13,6); Zeit je Bild 42 → 61 ms (+ ca. 19 ms).
-Gemessen ist Glätte; die **absolute** Genauigkeit des Ankers ist damit nicht belegt (Verkettung der Fotos kann einen kleinen Versatz tragen).
+**Verworfen (gemessen):** (1) Nur das kleine markierte Gebiet abgleichen: dort liegen auf glattem Blech nur 0–8 Schlüsselpunkte, und zwischen verschiedenen Fotos stimmen höchstens 4–7 überein –
+nicht verlässlich. (2) Dichter Schablonenabgleich (NCC) des kleinen Ausschnitts in einem kleinen Fenster: schnell (ca. 15 ms), aber 7 px Rauschen. (3) Kleine Nachbarschaft (30 % der Objektgröße) mit SIFT:
+nur 265 von 344 Bildern abgeglichen, Ausreißer. Deshalb: die Markierung legt Anker und Anzeige fest, abgeglichen wird das ganze Objekt.
 
-**Grenzen:** glatte, einfarbige Objekte liefern kaum Merkmale (dann Maskenpose, die Oberfläche meldet es nach dem Training); starke Blickwinkeländerungen lassen einzelne Referenzfotos
-ausfallen; Szenenschnitte im Video wirken auf beide Wege.
+**Ergebnis** (Karosse-Video, Erkennung je Bild, ein markiertes Merkmal je Foto an derselben Stelle; Rauschen = Median der zweiten Differenz der Position):
+Maske **39 / 22 px** (x / y) → Merkmals-Anker **0,5 / 0,25 px** (ORB und SIFT), 90. Perzentil x 106 → 2,8–3,5 px; Abdeckung 302–315 von 344 Bildern (Rest: Rückfall).
+Zusatzkosten je Bild (früherer Lauf, nur Merkmale an): SIFT 300 ≈ +24 ms, ORB 400 ≈ +9 ms; die Läufe fanden bei hoher Rechnerlast statt, absolute Zeiten schwanken stark.
+
+**Grenzen:** Gemessen ist **Glätte**, nicht absolute Genauigkeit des Ankers (er hängt davon ab, dass auf jedem Foto dieselbe Stelle markiert wird; die Prüfung der Markierungen gegeneinander ist ein Hinweis, kein Beweis).
+Glatte, einfarbige Objekte liefern kaum Merkmale (dann Maskenpose; die Oberfläche meldet es nach dem Training). Starke Blickwinkeländerungen lassen einzelne Referenzfotos ausfallen. Szenenschnitte im Testvideo wirken auf alle Verfahren.
+Die Markierung wurde in den Messungen nachgebildet (Anker aus der Verkettung der Fotos), nicht von Hand gesetzt.
