@@ -1,4 +1,4 @@
-# Camtrack — kamerabasiertes Pose-Tracking (`ctrack`)
+# ctrack (Camtrack) — kamerabasiertes Pose-Tracking
 
 Kameragestützter "virtueller Encoder": ein Objekt wird einmal eingelockt, seine planare Pose
 (x, y, θ) kontinuierlich verfolgt, per Kalman-Filter latenzkompensiert prädiziert und als
@@ -30,7 +30,7 @@ CameraSource → Detector → Tracker (State Machine + Predictor/Kalman) → Tra
 
 ```bash
 source .venv/bin/activate
-python -m ctrack.gui                                   # Web-Oberfläche (Doppelklick: Camtrack starten.command)
+python -m ctrack.gui                                   # Web-Oberfläche (Doppelklick: ctrack starten.command)
 python -m ctrack --config config/default.yaml          # Live-Demo (Webcam + Hand)
 python -m ctrack --config config/synthetic.yaml        # Synthetisches Band, keine Kamera nötig
 python tools/teach.py --camera 0 --out templates/part.png --mask-auto   # Referenz einlernen

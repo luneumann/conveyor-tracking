@@ -239,7 +239,7 @@ def serve(root: Path, port: int = 8765, open_browser: bool = True) -> None:
     if server is None:
         raise SystemExit(f"Ports {port}-{port + 9} sind belegt. Läuft die Oberfläche schon?")
     url = f"http://127.0.0.1:{Handler.port}/"
-    print(f"Camtrack läuft: {url}\n(Beenden mit Ctrl+C oder Fenster schließen)", flush=True)
+    print(f"ctrack (Camtrack) läuft: {url}\n(Beenden mit Ctrl+C oder Fenster schließen)", flush=True)
     if open_browser:
         threading.Timer(0.6, webbrowser.open, args=(url,)).start()
     try:

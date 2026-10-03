@@ -2,7 +2,7 @@
 
 ## Web-Oberfläche (Standard)
 
-Start per Doppelklick auf `Camtrack starten.command`. Links Live-Bild mit Overlay und Kennzahlen,
+Start per Doppelklick auf `ctrack starten.command`. Links Live-Bild mit Overlay und Kennzahlen,
 rechts die Bedienung in der Reihenfolge des Ablaufs:
 
 | Karte | Inhalt |

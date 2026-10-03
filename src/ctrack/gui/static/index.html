@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Camtrack</title>
+<title>ctrack</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b6fe0'/%3E%3Cpath d='M8 12V8h4M20 8h4v4M24 20v4h-4M12 24H8v-4' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M9 16h14' stroke='white' stroke-width='2' stroke-linecap='round' opacity='.55'/%3E%3Ccircle cx='16' cy='16' r='3.2' fill='white'/%3E%3C/svg%3E">
 <style>
 :root {
@@ -72,6 +72,16 @@ main { display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 16px; pa
   color: #aab6c2; }
 .placeholder .big { font-size: 18px; font-weight: 600; color: #e6edf3; margin-bottom: 6px; }
 .placeholder svg { width: 44px; height: 44px; stroke: #6b7c8c; margin-bottom: 10px; }
+.loader { display: grid; justify-items: center; gap: 12px; }
+.loader .ring { position: relative; width: 86px; height: 86px; }
+.loader .ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 3px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent); animation: spin 1.1s linear infinite; }
+.loader .glyph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; line-height: 1; color: var(--accent); }
+.loader .msg { font-size: 18px; font-weight: 600; color: #e6edf3; min-height: 1.5em; animation: fadein .35s ease; }
+.loader .sub { font-size: 13px; color: #8d9aa8; max-width: 440px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .loader .ring::before { animation-duration: 3s; } .loader .msg { animation: none; } }
 .chip { position: absolute; left: 12px; bottom: 12px; padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600;
   background: rgba(8, 12, 16, .78); color: #fff; display: none; backdrop-filter: blur(4px); }
 .chip.show { display: block; }
@@ -194,7 +204,7 @@ a { color: var(--accent); }
 <body>
 <header>
   <div class="logo" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 12V8h4M20 8h4v4M24 20v4h-4M12 24H8v-4"/><circle cx="16" cy="16" r="3" fill="currentColor" stroke="none"/></svg></div>
-  <h1>Camtrack <small>Objekt-Tracking per Kamera</small></h1>
+  <h1>ctrack <small>Camtrack · Objekt-Tracking per Kamera</small></h1>
   <div class="spacer"></div>
   <div class="pill" id="statePill" data-state="IDLE" role="status" aria-live="polite"><span class="dot"></span><span id="stateLabel">Bereit</span></div>
 </header>
@@ -312,10 +322,15 @@ a { color: var(--accent); }
       <img id="stream" alt="Live-Bild mit Tracking-Overlay" hidden>
       <canvas id="teachCanvas" hidden aria-label="Bild zum Einlernen: Rechteck um das Teil ziehen"></canvas>
       <div class="placeholder" id="placeholder">
-        <div>
+        <div id="phIdle">
           <svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
           <div class="big" id="phTitle">Kamera ist aus</div>
           <div id="phText">Quelle wählen und auf „Starten“ drücken.</div>
+        </div>
+        <div class="loader" id="loader" role="status" aria-live="polite" hidden>
+          <div class="ring"><div class="glyph" id="ldGlyph" aria-hidden="true">✶</div></div>
+          <div class="msg" id="ldMsg">Archive aufräumen …</div>
+          <div class="sub" id="ldSub"></div>
         </div>
       </div>
       <div class="chip" id="chip"></div>
@@ -419,7 +434,9 @@ function render() {
   const ph = $("#placeholder");
   ph.hidden = teaching || (running && S.frames > 0);
   if (!running) { $("#phTitle").textContent = S.error ? "Konnte nicht starten" : "Kamera ist aus"; $("#phText").textContent = S.error ? "Siehe Meldung oben." : "Quelle wählen und auf „Starten“ drücken."; }
-  else { $("#phTitle").textContent = "Starte …"; $("#phText").textContent = st.detector === "template" ? "Kamera wird geöffnet, Referenzbild geladen." : "Kamera und Handmodell werden geladen."; }
+  const loading = running && S.frames === 0 && !teaching;
+  $("#phIdle").hidden = loading;
+  setLoader(loading, (S.accel && S.accel.pending && S.accel.pending.length) ? "Die Neural Engine wird auf deine Bildgröße übersetzt – das passiert nur beim ersten Mal (ca. 30 s je Größe)." : "");
   if (running && S.session && streamSession !== S.session) {
     streamSession = S.session; const img = $("#stream"); img.src = "/stream.mjpg?s=" + S.session;
   }
@@ -546,12 +563,35 @@ function renderGallery() {
   if (!S.templates.length) g.innerHTML = "<p class='note'>Noch keine Referenzbilder.</p>";
 }
 
+
+/* ---------- loading feedback while models load and the camera starts ---------- */
+const LOAD_MSGS = ["Archive aufräumen …", "Kamera aufstellen …", "Linse putzen …", "KI aufwecken …", "Neuronen sortieren …", "Pixel durchzählen …",
+  "Kaffee für die Rechenkerne kochen …", "Modelle abstauben …", "Kalman-Filter anspitzen …", "Winkel geradebiegen …", "Bildrauschen leiser stellen …",
+  "Neural Engine ölen …", "Koordinaten polieren …", "Objektive entfusseln …", "Gedächtnis auffrischen …", "Mustererkennung dehnen …"];
+const LOAD_GLYPHS = ["✶", "✷", "✸", "✹", "✺", "✹", "✸", "✷"];
+const ld = { on: false, t0: 0, gi: 0, order: [], mi: 0, tg: null, tm: null };
+function nextLoadMsg() {
+  if (ld.mi >= ld.order.length) { ld.order = LOAD_MSGS.map((_, i) => i).sort(() => Math.random() - 0.5); if (ld.order[0] === ld.last) ld.order.reverse(); ld.mi = 0; }
+  ld.last = ld.order[ld.mi++]; const el = $("#ldMsg"); el.textContent = LOAD_MSGS[ld.last];
+  el.style.animation = "none"; void el.offsetWidth; el.style.animation = "";
+}
+function setLoader(on, extra) {
+  const el = $("#loader"); el.hidden = !on;
+  if (on && !ld.on) {
+    ld.on = true; ld.t0 = Date.now(); ld.mi = 0; ld.order = []; nextLoadMsg();
+    ld.tg = setInterval(() => { $("#ldGlyph").textContent = LOAD_GLYPHS[ld.gi++ % LOAD_GLYPHS.length]; showLoadSub(); }, 120);
+    ld.tm = setInterval(nextLoadMsg, 2600);
+  } else if (!on && ld.on) { ld.on = false; clearInterval(ld.tg); clearInterval(ld.tm); }
+  ld.extra = extra; if (on) showLoadSub();
+}
+function showLoadSub() { $("#ldSub").textContent = (ld.extra ? ld.extra + " " : "Das kann beim Start einen Moment dauern. ") + Math.round((Date.now() - ld.t0) / 1000) + " s"; }
+
 /* ---------- polling ---------- */
 async function poll() {
   try {
     const r = await fetch("/api/status", { cache: "no-store" });
     S = await r.json(); $("#connBanner").classList.remove("show"); render();
-  } catch { $("#connBanner").classList.add("show"); }
+  } catch { if (!(S && (S.starting || (S.running && S.frames === 0)))) $("#connBanner").classList.add("show"); }  // the app may stall while models compile
 }
 setInterval(poll, 300); poll();
 

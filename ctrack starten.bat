@@ -22,7 +22,7 @@ exit /b 1
 .venv\Scripts\python.exe -m pip install -q -e . || goto :fail
 
 :run
-echo Starte Camtrack ...
+echo Starte ctrack ...
 .venv\Scripts\python.exe -m ctrack.gui
 echo.
 pause

@@ -75,7 +75,8 @@ def _png(pose=Pose(300, 200, 0.0)) -> bytes:
 
 def test_index_page_served(gui):
     code, body = gui.req("GET", "/")
-    assert code == 200 and b"Camtrack" in body
+    assert code == 200 and b"ctrack" in body and b"Camtrack" in body
+    assert b'id="loader"' in body and "Linse putzen".encode() in body       # start-up feedback while models load
 
 
 def test_rejects_cross_site_requests(gui):
