@@ -235,3 +235,13 @@ Maschine bleibt er nicht nötig.
 
 **Grenzen:** Ein einziges Objekt, ein einziges Video, 6 Testbilder, Stock-Szene (kein echter Aufbau, keine mm). Aussagekräftig ist vor allem: das Verfahren trägt auf einem
 großen, gleichmäßig bewegten Objekt, auch mit schwenkender Kamera.
+
+## 13. Mögliche Erweiterung, nicht Standard: YOLO-Detektor (03.10.2026)
+
+**Entscheidung (Projektleitung):** YOLO wird als optionaler Zusatz-Detektor im Hinterkopf behalten, **nicht** als Standard. Standard bleibt der Few-Shot-Detektor (5 Fotos, ein Klick).
+
+**Begründung:** YOLO braucht gelabelte Bilder je Klasse (typisch Hunderte), liefert ohne OBB/Segmentierungsvariante nur achsenparallele Boxen (kein θ), die Ultralytics-Lizenz ist meines Wissens AGPL-3.0 (vor Einsatz klären) und es wurde in diesem Projekt **nicht getestet**.
+
+**Wann es sich lohnt:** feste, bekannte Serienteile mit 100–300 labelbaren Bildern und Bedarf an wenigen ms je Erkennung (Stufe 2). Einhängen als neue `Detector`-Klasse per Registry, Tracker/Ausgabe bleiben unverändert; für θ eine OBB- oder Segmentierungsvariante nehmen und mit `tools/eval_recording.py` gegen den Standard messen.
+
+**Quelle der Einordnung:** liveimagetrackingtools.org ist eine Zell-Tracking-Community (Mikroskopie, offline, mehrere Objekte); übertragbar wäre höchstens die Zuordnung mehrerer Teile (LAP-Verfahren) und die Trennung von Erkennungs- und Verknüpfungsmetriken.
