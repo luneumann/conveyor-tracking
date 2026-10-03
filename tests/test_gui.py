@@ -350,3 +350,22 @@ def test_template_list_survives_a_file_vanishing_mid_listing(gui, monkeypatch):
     monkeypatch.setattr(Path, "stat", flaky)
     names = [t["name"] for t in Engine(gui.root).list_templates()]
     assert "synthetic_part" in names and "ghost" not in names
+
+
+def test_screen_recordings_in_other_containers_can_be_replayed(gui):
+    """Regression: only *.mp4 was listed, so a macOS screen recording (.mov, name with spaces) could not be loaded."""
+    d = gui.root / "recordings"
+    d.mkdir()
+    name = "Bildschirmaufnahme 2026-10-03 um 14.06.09.mov"
+    w = cv2.VideoWriter(str(d / name), cv2.VideoWriter_fourcc(*"mp4v"), 25.0, (320, 180))
+    for i in range(30):
+        w.write(np.full((180, 320, 3), 40 + i, np.uint8))
+    w.release()
+    (d / "notes.txt").write_text("x")
+    listed = gui.req("GET", "/api/status")[1]["recordings"]
+    assert name in listed and "notes.txt" not in listed
+    gui.post("/api/settings", {"source": "replay", "recording": name, "detector": "template", "template": "synthetic_part"})
+    gui.post("/api/session", {"action": "start"})
+    st = gui.wait(lambda s: s["frames"] >= 10 or s["error"], timeout=30)
+    assert st["error"] is None and st["frames"] >= 10
+    gui.post("/api/session", {"action": "stop"})

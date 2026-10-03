@@ -110,6 +110,7 @@ class Settings:
 RESTART_KEYS = {"source", "device", "recording", "detector", "template", "learned"}
 
 
+VIDEO_EXTS = (".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm")   # what "Aufnahme" can replay (anything OpenCV opens)
 EMPTY_SECONDS = 10.0       # empty-scene capture: how long to watch
 EMPTY_SAMPLE_S = 0.25
 EMPTY_MIN_DIFF = 4.0       # mean grey-level difference (0-255, 48x27 thumbnail) for a frame to count as 'different'
@@ -750,10 +751,12 @@ class Engine:
             self.update_settings({"template": "synthetic_part"})
 
     def list_recordings(self) -> list[str]:
-        return sorted(p.name for p in self.recordings_dir.glob("*.mp4")) if self.recordings_dir.exists() else []
+        if not self.recordings_dir.exists():
+            return []
+        return sorted(p.name for p in self.recordings_dir.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS)
 
     def _recording_path(self, name: str) -> Path | None:
-        if not name or "/" in name or "\\" in name or not name.endswith(".mp4"):
+        if not name or "/" in name or "\\" in name or Path(name).suffix.lower() not in VIDEO_EXTS:
             return None
         p = self.recordings_dir / name
         return p if p.exists() else None
