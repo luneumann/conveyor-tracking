@@ -24,6 +24,7 @@ import numpy as np
 
 from ..camera.video_file import Recorder
 from ..config import load_config
+from ..features import build_feature_model
 from ..metrics import MetricsLogger
 from ..models import fetch_hand_model, fetch_vision_models
 from ..pipeline import Pipeline
@@ -64,6 +65,7 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 5005
     record: bool = False
+    feature_mode: str = "auto"     # off | auto | on: pose from image features inside the mask (big objects)
     auto_scene: bool = True         # save the last seconds automatically when a locked object is lost
 
     def update(self, data: dict[str, Any]) -> set[str]:
@@ -84,6 +86,8 @@ class Settings:
                 raise ValueError("detector must be hand, template or learned")
             if key == "speed" and value not in SPEEDS:
                 raise ValueError("unknown speed")
+            if key == "feature_mode" and value not in ("off", "auto", "on"):
+                raise ValueError("feature_mode must be off, auto or on")
             if key == "preset" and value not in PRESETS:
                 raise ValueError("unknown preset")
             if key == "min_score":
@@ -151,6 +155,7 @@ class Engine:
         self._learn_mask: np.ndarray | None = None
         self._learn_samples: list[tuple[np.ndarray, np.ndarray]] = []
         self._learn_thumbs: list[bytes] = []
+        self._learn_region: tuple[float, float, float, float] | None = None   # dedicated feature region in photo 1 (x, y, w, h)
         self._learn_empty: list[np.ndarray] = []      # camera frames without the object (real negatives)
         self._empty_capturing = False
         self._learn = {"phase": "idle", "progress": 0.0, "error": None}
@@ -256,7 +261,8 @@ class Engine:
                 raise ValueError("Die Bild-Modelle fehlen – in der Oberfläche 'Modelle laden' drücken")
             overrides["detector"] = {"type": "learned", "model_path": str(path), "models_dir": str(self.root / "models"),
                                      "min_score": s.obj_score, "view_size": SPEEDS[s.speed][0],
-                                     "refine_size": SPEEDS[s.speed][1], "global_width": SPEEDS[s.speed][2]}
+                                     "refine_size": SPEEDS[s.speed][1], "global_width": SPEEDS[s.speed][2],
+                                     "feature_mode": s.feature_mode}
         else:
             tpl = self._template_path(s.template)
             if not tpl.exists():
@@ -389,6 +395,10 @@ class Engine:
         if live.speed != applied.get("speed") and hasattr(pipeline.detector, "view_size"):
             pipeline.detector.configure(*SPEEDS[live.speed])
         applied["speed"] = live.speed
+        if live.feature_mode != applied.get("feature_mode"):
+            if hasattr(pipeline.detector, "feature_mode"):
+                pipeline.detector.feature_mode = live.feature_mode
+            applied["feature_mode"] = live.feature_mode
         score = live.obj_score if live.detector == "learned" else live.min_score
         if score != applied.get("score"):
             if hasattr(pipeline.detector, "min_score"):
@@ -492,7 +502,7 @@ class Engine:
                     "accel": accelerator_status(),
                     "learn": {**self._learn, "count": len(self._learn_samples), "has_frame": self._teach_frame is not None,
                               "empty": len(self._learn_empty), "empty_capturing": self._empty_capturing,
-                              "has_mask": self._learn_mask is not None},
+                              "has_mask": self._learn_mask is not None, "region": self._learn_region is not None},
                     "hand_model": (self.root / "models" / "hand_landmarker.task").exists()}
 
     # ---- teach-in ---------------------------------------------------------------------------
@@ -602,6 +612,27 @@ class Engine:
     def learn_remove(self, index: int) -> None:
         if 0 <= index < len(self._learn_samples):
             del self._learn_samples[index], self._learn_thumbs[index]
+            if index == 0:
+                self._learn_region = None          # the region was drawn on the first photo
+
+    def learn_sample_full_jpg(self, i: int) -> bytes | None:
+        if not 0 <= i < len(self._learn_samples):
+            return None
+        return cv2.imencode(".jpg", self._learn_samples[i][0], [cv2.IMWRITE_JPEG_QUALITY, 90])[1].tobytes()
+
+    def learn_set_region(self, box: list[float] | None) -> None:
+        """Optional dedicated feature region on the FIRST photo; None clears it (anchor = whole object)."""
+        if not box:
+            self._learn_region = None
+            return
+        if not self._learn_samples:
+            raise ValueError("Zuerst ein Foto übernehmen")
+        h, w = self._learn_samples[0][0].shape[:2]
+        x, y, bw, bh = (float(v) for v in box)
+        x0, y0, x1, y1 = max(x, 0.0), max(y, 0.0), min(x + bw, w), min(y + bh, h)
+        if x1 - x0 < 24 or y1 - y0 < 24:
+            raise ValueError("Die Region ist zu klein")
+        self._learn_region = (x0, y0, x1 - x0, y1 - y0)
 
     def learn_empty_start(self, seconds: float = EMPTY_SECONDS) -> None:
         """Watch the live camera for `seconds` (scene WITHOUT the object) and keep frames that look different from
@@ -642,6 +673,7 @@ class Engine:
         self._learn_samples.clear()
         self._learn_thumbs.clear()
         self._learn_empty.clear()
+        self._learn_region = None
         self._teach_frame, self._learn_mask, self._sam_frame_id = None, None, None
         self._learn.update(phase="idle", progress=0.0, error=None)
 
@@ -658,7 +690,8 @@ class Engine:
         samples = list(self._learn_samples)
         empties = list(self._learn_empty)
         thumb = self._learn_thumbs[0]
-        self._learn.update(phase="training", progress=0.0, error=None)
+        region = self._learn_region
+        self._learn.update(phase="training", progress=0.0, error=None, note="")
 
         def work() -> None:
             try:
@@ -666,11 +699,19 @@ class Engine:
                     _, dino = self._vision()
                     model = train_object_model(samples, dino, name, empty_scenes=empties,
                                                progress=lambda f: self._learn.update(progress=float(f)))
+                try:
+                    model.feat = build_feature_model(samples, region)
+                except Exception:                  # features are optional: the mask-based pose always works
+                    model.feat = None
+                self._learn.update(note=("Merkmals-Tracking bereit (" + str(len(model.feat.views)) + " Ansichten" + (", Region" if model.feat.region else "")
+                                         + (", große Objekte: automatisch an" if model.feat.large else "") + ")") if model.feat is not None
+                                   else "Zu wenige Merkmale gefunden (glattes Objekt?) – es wird die Maske genutzt")
                 model.save(self.objects_dir / f"{name}.npz")
                 (self.objects_dir / f"{name}.jpg").write_bytes(thumb)
                 self._learn_samples.clear()
                 self._learn_thumbs.clear()
                 self._learn_empty.clear()
+                self._learn_region = None
                 self._learn.update(phase="done", progress=1.0)
                 self.update_settings({"detector": "learned", "learned": name})
             except Exception as e:  # shown in the GUI

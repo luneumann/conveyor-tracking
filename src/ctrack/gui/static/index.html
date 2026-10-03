@@ -270,6 +270,9 @@ a { color: var(--accent); }
 
         <div class="field" id="fieldSpeed" style="margin-bottom:14px"><label for="selSpeed">Tempo (gelerntes Objekt)</label>
           <select id="selSpeed"><option value="fast">Schnell (weniger genau)</option><option value="balanced">Ausgewogen</option><option value="precise">Genau (336 px, langsamer)</option></select></div>
+        <div class="field" id="fieldFeature" style="margin-bottom:14px"><label for="selFeature">Merkmals-Tracking (große Objekte)</label>
+          <select id="selFeature"><option value="auto">Automatisch (große Objekte)</option><option value="on">Immer an</option><option value="off">Aus (nur Maske)</option></select>
+          <p class="note" style="margin-top:4px">Die Pose kommt aus Bildmerkmalen im Objekt statt aus dem Maskenrand – ruhiger bei großen Objekten.</p></div>
 
       </div>
     </section>
@@ -356,7 +359,14 @@ a { color: var(--accent); }
         <button class="btn" id="lcFile">Bild laden …</button>
         <input type="file" id="lcFileInput" accept="image/*" hidden>
         <button class="btn" id="lcEmpty" title="Objekt aus dem Bild nehmen, dann drücken: 10 s lang wird die leere Umgebung aufgenommen. Bewege dich dabei, schwenke die Kamera leicht, ändere das Licht – nur unterschiedliche Bilder werden behalten">Leere Szene aufnehmen</button>
+        <button class="btn" id="lcRegionBtn" title="Optional, für große Objekte: auf dem ersten Foto den Bereich markieren, dessen Merkmal verfolgt werden soll (z. B. eine Tür oder ein Logo). Ohne Region wird das ganze Objekt über seine Bildmerkmale verfolgt.">Merkmalsregion …</button>
+        <span class="note" id="lcRegionInfo" hidden></span>
         <span class="note" id="lcEmptyInfo" hidden><span id="lcEmptyN"></span> <button class="btn small" id="lcEmptyClear" style="height:26px;padding:0 8px">×</button></span>
+      </div>
+      <div class="row" id="lcRegion" style="margin:0" hidden>
+        <button class="btn primary" id="lcRegionOk" disabled>Region übernehmen</button>
+        <button class="btn" id="lcRegionClear">Ohne Region (ganzes Objekt)</button>
+        <button class="btn" id="lcRegionBack">Zurück</button>
       </div>
       <div class="row" id="lcClick" style="margin:0">
         <button class="btn" id="lcClear">Klicks zurücksetzen</button>
@@ -412,7 +422,7 @@ const idle = (el) => document.activeElement !== el;
 function render() {
   if (!S) return;
   const st = S.settings, running = S.running;
-  const teaching = !!teach || !!(learn && learn.phase === "click");
+  const teaching = !!teach || !!(learn && (learn.phase === "click" || learn.phase === "region"));
   const state = running ? S.state : "IDLE";
 
   // header pill
@@ -516,6 +526,7 @@ function render() {
   $("#sliderObj").hidden = !isLearned;
   $("#fieldSpeed").hidden = !isLearned;
   if (idle($("#selSpeed"))) $("#selSpeed").value = st.speed;
+  $("#fieldFeature").hidden = !isLearned; if (idle($("#selFeature"))) $("#selFeature").value = st.feature_mode;
   renderLearn();
 
   // metrics
@@ -621,6 +632,7 @@ $("#btnScene").onclick = () => act(() => api("/api/command", { name: "save_scene
 $("#swRec").onchange = (e) => setSetting({ record: e.target.checked });
 $("#inHost").onchange = (e) => setSetting({ host: e.target.value.trim() || "127.0.0.1" });
 $("#inPort").onchange = (e) => setSetting({ port: Number(e.target.value) });
+$("#selFeature").onchange = (e) => setSetting({ feature_mode: e.target.value });
 $("#selSpeed").onchange = (e) => setSetting({ speed: e.target.value });
 $("#selPreset").onchange = (e) => setSetting({ preset: e.target.value });
 for (const [id, out, key, f] of [["#slObj", "#oObj", "obj_score", (v) => Math.round(v * 100) + " %"], ["#slHorizon", "#oHorizon", "horizon_ms", (v) => v + " ms"], ["#slCoast", "#oCoast", "coast_ms", (v) => v + " ms"], ["#slScore", "#oScore", "min_score", (v) => Math.round(v * 100) + " %"]]) {
@@ -641,6 +653,12 @@ function endLearn() { if (learn && learn.timer) clearInterval(learn.timer); lear
 function drawLearn() {
   if (!learn || !learn.img) return; const c = $("#teachCanvas"), g = c.getContext("2d");
   g.drawImage(learn.img, 0, 0);
+  if (learn.phase === "region") {
+    if (learn.roi) { const r = learn.roi; g.fillStyle = "rgba(0,0,0,.45)"; g.fillRect(0, 0, c.width, c.height); g.drawImage(learn.img, r.x, r.y, r.w, r.h, r.x, r.y, r.w, r.h);
+      g.lineWidth = Math.max(3, c.width / 400); g.strokeStyle = "#6d9bff"; g.strokeRect(r.x, r.y, r.w, r.h);
+      g.beginPath(); g.arc(r.x + r.w / 2, r.y + r.h / 2, Math.max(5, c.width / 220), 0, 7); g.fillStyle = "#6d9bff"; g.fill(); }
+    return;
+  }
   if (learn.mask) g.drawImage(learn.mask, 0, 0, c.width, c.height);
   const r = Math.max(7, c.width / 150);
   learn.pts.forEach(([x, y], i) => { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = learn.labels[i] ? "#22c55e" : "#ef4444"; g.fill(); g.lineWidth = r / 3; g.strokeStyle = "#fff"; g.stroke(); });
@@ -685,10 +703,14 @@ function renderLearn() {
   const bar = $("#learnBar"); bar.classList.toggle("show", !!learn);
   if (!learn) return;
   const L = S.learn || { count: 0, phase: "idle", progress: 0 }, training = L.phase === "training";
-  if (learn.training && L.phase === "done") { toast("Objekt gelernt – die Erkennung läuft damit"); return endLearn(); }
-  const click = learn.phase === "click";
-  $("#lcCompose").hidden = click; $("#lcClick").hidden = !click; $("#lcNameWrap").hidden = click; $("#lcTrain").hidden = click;
-  $("#learnHint").innerHTML = click
+  if (learn.training && L.phase === "done") { toast("Objekt gelernt – " + (L.note || "die Erkennung läuft damit")); return endLearn(); }
+  const click = learn.phase === "click", region = learn.phase === "region", editing = click || region;
+  $("#lcCompose").hidden = editing; $("#lcClick").hidden = !click; $("#lcRegion").hidden = !region; $("#lcNameWrap").hidden = editing; $("#lcTrain").hidden = editing;
+  $("#lcRegionBtn").disabled = L.count < 1 || training; $("#lcRegionBtn").textContent = L.region ? "Merkmalsregion ✓ ändern …" : "Merkmalsregion …";
+  $("#lcRegionInfo").hidden = !L.region; $("#lcRegionInfo").textContent = "Region auf Foto 1 gesetzt";
+  $("#learnHint").innerHTML = region
+    ? "<b>Merkmalsregion:</b> Ziehe auf dem <b>ersten Foto</b> ein Rechteck um den Bereich, dessen Merkmal verfolgt werden soll (z. B. Tür, Logo, Scheinwerfer). Dessen Mitte wird der Bezugspunkt der Pose. Es sollte Struktur enthalten (Kanten, Beschriftung), keine glatte Fläche."
+    : click
     ? "<b>Auf das Objekt klicken</b> (linke Maustaste). Zeigt die Maske nur einen Teil: weiter auf den fehlenden Teil klicken. Zu viel erfasst: <b>rechte Maustaste</b> (oder Umschalt+Klick) auf den Überschuss. Dann <b>Foto übernehmen</b>."
     : `<b>Objekt anlernen:</b> ${S.running ? "Halte das Objekt in die Kamera und nimm ein Foto auf. Wiederhole das mit <b>anderem Abstand und leicht gedrehtem Objekt</b> (ca. 5 Fotos), dann <b>Trainieren</b>. <i>Optional, aber hilfreich:</i> Objekt aus dem Bild nehmen und <b>Leere Szene aufnehmen</b> (10 s, dabei bewegen, Kamera leicht schwenken) — so lernt das Programm deine echte Umgebung als „nicht das Objekt“." : "Starte links die Kamera (Karte 1) oder lade Fotos aus Dateien."} <b>${L.count}</b> Foto(s) aufgenommen.`;
   const busyTrain = training || learn.training && L.phase !== "error";
@@ -728,6 +750,13 @@ $("#lcFileInput").onchange = async (e) => {
 $("#lcEmpty").onclick = async () => { try { await api("/api/learn/empty"); poll(); } catch (e) { toast(e.message, true); } };
 $("#lcEmptyClear").onclick = () => act(() => api("/api/learn/empty/clear"));
 $("#lcClear").onclick = () => { learn.pts = []; learn.labels = []; learn.mask = null; drawLearn(); renderLearn(); };
+$("#lcRegionBtn").onclick = async () => {
+  try { learn.img = await loadImg("/api/learn/sample/0/full.jpg?t=" + Date.now()); } catch (e) { return toast(e.message, true); }
+  learn.phase = "region"; learn.roi = null; learn.drag = null; const c = $("#teachCanvas"); c.width = learn.img.naturalWidth; c.height = learn.img.naturalHeight; drawLearn(); render();
+};
+$("#lcRegionOk").onclick = async () => { const r = learn.roi; try { await api("/api/learn/region", { x: r.x, y: r.y, w: r.w, h: r.h }); learn.phase = "compose"; learn.img = null; poll(); render(); } catch (e) { toast(e.message, true); } };
+$("#lcRegionClear").onclick = async () => { try { await api("/api/learn/region", {}); learn.phase = "compose"; learn.img = null; poll(); render(); } catch (e) { toast(e.message, true); } };
+$("#lcRegionBack").onclick = () => { learn.phase = "compose"; learn.img = null; render(); };
 $("#lcDiscard").onclick = () => { learn.phase = "compose"; learn.img = null; learn.mask = null; render(); };
 $("#lcAdd").onclick = async () => { try { await api("/api/learn/add"); learn.phase = "compose"; learn.img = null; learn.mask = null; poll(); render(); } catch (e) { toast(e.message, true); } };
 $("#lcCancel").onclick = async () => { try { await api("/api/learn/reset"); } catch (e) { /* ignore */ } endLearn(); };
@@ -762,13 +791,18 @@ function canvasPoint(e) {
 }
 const tc = $("#teachCanvas");
 tc.oncontextmenu = (e) => { if (learn && learn.phase === "click") e.preventDefault(); };
-tc.onpointerdown = (e) => { if (learn && learn.phase === "click") { learnClick(e); return; } if (!teach) return; tc.setPointerCapture(e.pointerId); teach.drag = canvasPoint(e); teach.roi = null; };
+tc.onpointerdown = (e) => {
+  if (learn && learn.phase === "region") { tc.setPointerCapture(e.pointerId); learn.drag = canvasPoint(e); learn.roi = null; $("#lcRegionOk").disabled = true; return; }
+  if (learn && learn.phase === "click") { learnClick(e); return; } if (!teach) return; tc.setPointerCapture(e.pointerId); teach.drag = canvasPoint(e); teach.roi = null; };
 tc.onpointermove = (e) => {
+  if (learn && learn.phase === "region" && learn.drag) { const p = canvasPoint(e), d = learn.drag; learn.roi = { x: Math.min(d.x, p.x), y: Math.min(d.y, p.y), w: Math.abs(p.x - d.x), h: Math.abs(p.y - d.y) }; drawLearn(); return; }
   if (!teach || !teach.drag) return; const p = canvasPoint(e), d = teach.drag;
   teach.roi = { x: Math.min(d.x, p.x), y: Math.min(d.y, p.y), w: Math.abs(p.x - d.x), h: Math.abs(p.y - d.y) }; drawTeach();
   $("#roiInfo").textContent = `${Math.round(teach.roi.w)} × ${Math.round(teach.roi.h)} px`;
 };
-tc.onpointerup = () => { if (!teach) return; teach.drag = null; $("#teachSave").disabled = !(teach.roi && teach.roi.w >= 16 && teach.roi.h >= 16); };
+tc.onpointerup = () => {
+  if (learn && learn.phase === "region") { learn.drag = null; $("#lcRegionOk").disabled = !(learn.roi && learn.roi.w >= 24 && learn.roi.h >= 24); return; }
+  if (!teach) return; teach.drag = null; $("#teachSave").disabled = !(teach.roi && teach.roi.w >= 16 && teach.roi.h >= 16); };
 $("#teachCancel").onclick = closeTeach;
 $("#teachSave").onclick = async () => {
   const r = teach.roi, name = $("#tplName").value.trim();

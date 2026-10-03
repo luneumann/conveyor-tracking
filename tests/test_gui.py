@@ -370,3 +370,23 @@ def test_screen_recordings_in_other_containers_can_be_replayed(gui):
     st = gui.wait(lambda s: s["frames"] >= 10 or s["error"], timeout=30)
     assert st["error"] is None and st["frames"] >= 10
     gui.post("/api/session", {"action": "stop"})
+
+
+def test_learn_region_endpoints_and_feature_mode_setting(gui):
+    assert gui.post("/api/settings", {"feature_mode": "bogus"})[0] == 400
+    code, d = gui.post("/api/settings", {"feature_mode": "on"})
+    assert code == 200 and d["settings"]["feature_mode"] == "on"
+    assert gui.post("/api/learn/region", {"x": 10, "y": 10, "w": 100, "h": 100})[0] == 400      # no photo taken yet
+    gui.root.joinpath("x").mkdir(exist_ok=True)
+    e = Handler.engine
+    img = np.full((300, 400, 3), 90, np.uint8)
+    e._learn_samples.append((img, np.ones((300, 400), bool)))
+    e._learn_thumbs.append(b"t")
+    code, d = gui.post("/api/learn/region", {"x": 50, "y": 40, "w": 120, "h": 90})
+    assert code == 200 and d["learn"]["region"] is True
+    assert gui.post("/api/learn/region", {"x": 5, "y": 5, "w": 10, "h": 10})[0] == 400             # too small
+    code, jpg = gui.req("GET", "/api/learn/sample/0/full.jpg")
+    assert code == 200 and jpg[:2] == b"\xff\xd8"
+    assert gui.req("GET", "/api/learn/sample/5/full.jpg")[0] == 404
+    code, d = gui.post("/api/learn/region", {})
+    assert code == 200 and d["learn"]["region"] is False

@@ -20,6 +20,7 @@ from typing import Callable
 import cv2
 import numpy as np
 
+from .features import FeatureModel
 from .types import wrap_angle
 from .vision.onnx_models import EMBED_DIM, PATCH, DinoFeatures
 
@@ -65,6 +66,7 @@ class ObjectModel:
     aspect_lo: float = 0.0     # accepted long/short side ratio of the object's mask (0 = unchecked)
     aspect_hi: float = 0.0
     backbone: str = "dinov2_small.onnx"   # the head only fits the backbone it was trained on
+    feat: "FeatureModel | None" = None   # optional feature anchor for big objects (features.py)
 
     def aspect_ok(self, aspect: float) -> bool:
         return self.aspect_hi <= 0 or self.aspect_lo <= aspect <= self.aspect_hi
@@ -76,9 +78,10 @@ class ObjectModel:
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
+        extra = self.feat.to_arrays() if self.feat is not None else {}
         np.savez(path, w=self.w, b=self.b, mu=self.mu, sigma=self.sigma, name=self.name,
                  n_images=self.n_images, n_patches=self.n_patches, created=self.created,
-                 aspect_lo=self.aspect_lo, aspect_hi=self.aspect_hi, backbone=self.backbone)
+                 aspect_lo=self.aspect_lo, aspect_hi=self.aspect_hi, backbone=self.backbone, **extra)
 
     @classmethod
     def load(cls, path: Path) -> ObjectModel:
@@ -86,7 +89,7 @@ class ObjectModel:
         return cls(str(d["name"]), d["w"], float(d["b"]), d["mu"], d["sigma"], int(d["n_images"]),
                    int(d["n_patches"]), str(d["created"]),
                    float(d["aspect_lo"]) if "aspect_lo" in d else 0.0, float(d["aspect_hi"]) if "aspect_hi" in d else 0.0,
-                   str(d["backbone"]) if "backbone" in d else "dinov2_small.onnx")
+                   str(d["backbone"]) if "backbone" in d else "dinov2_small.onnx", FeatureModel.from_arrays(d))
 
 
 # ---------------------------------------------------------------------------------------------------------

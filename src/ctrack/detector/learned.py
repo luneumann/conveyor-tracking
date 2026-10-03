@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ..features import FeatureRefiner
 from ..objectmodel import ObjectModel, crop_view, global_view, mask_pose
 from ..registry import DETECTORS
 from ..types import Detection, Frame
@@ -30,7 +31,7 @@ class LearnedObjectDetector(Detector):
     def __init__(self, model_path: str, models_dir: str = "models", min_score: float = 0.6,
                  threshold: float = 0.5, crop_factor: float = 1.8, global_width: int = 448,
                  global_interval: int = 3, view_size: int = 168, refine_size: int = 0,
-                 acquire_margin: float = 0.2) -> None:
+                 acquire_margin: float = 0.2, feature_mode: str = "auto") -> None:
         if not Path(model_path).exists():
             raise FileNotFoundError(f"Gelerntes Objekt nicht gefunden: {model_path}")
         self.model = ObjectModel.load(Path(model_path))
@@ -40,6 +41,10 @@ class LearnedObjectDetector(Detector):
         self.min_score = min_score          # keep following an object that is already being tracked (crop search)
         # A whole-frame search has no anchor, so it must be surer: look-alikes scored 0.6-0.82 where true hits scored 0.84-0.93.
         self.acquire_margin = acquire_margin
+        # Big objects: the pose comes from image features inside the mask (see features.py) instead of the mask's centroid.
+        # off | auto (on when the taught object was big in the image) | on. Needs features stored with the object.
+        self.feature_mode = feature_mode
+        self._fr = FeatureRefiner(self.model.feat) if self.model.feat is not None else None
         self.threshold = threshold
         self.crop_factor = crop_factor
         self.global_width = global_width
@@ -56,6 +61,21 @@ class LearnedObjectDetector(Detector):
         self.warm_up()
         self._last: tuple[float, float, float, float] | None = None   # x, y, theta, long side (px)
         self._misses = 0
+
+    @property
+    def use_features(self) -> bool:
+        if self._fr is None or self.feature_mode == "off":
+            return False
+        return self.feature_mode == "on" or self._fr.model.large
+
+    def _hint_xy(self) -> tuple[float, float] | None:
+        """Where the tracker expects the MASK centre: the hint refers to the published (anchor) pose, so the anchor's
+        offset from the mask centroid is taken off again."""
+        if self.hint is None:
+            return None
+        if self.use_features:
+            return self.hint[0] - float(self._fr.last_offset_px[0]), self.hint[1] - float(self._fr.last_offset_px[1])
+        return self.hint[0], self.hint[1]
 
     @property
     def acquire_score(self) -> float:
@@ -103,10 +123,11 @@ class LearnedObjectDetector(Detector):
 
     def _near_hint(self, x: float, y: float) -> bool:
         """A weaker match is fine where the tracker expects the object (it is no 'new' object then)."""
-        if self.hint is None:
+        hxy = self._hint_xy()
+        if hxy is None:
             return False
         gate = max(2.0 * self._last[3], 150.0) if self._last is not None else 200.0
-        return math.hypot(x - self.hint[0], y - self.hint[1]) < gate
+        return math.hypot(x - hxy[0], y - hxy[1]) < gate
 
     def _refine(self, img: np.ndarray, det: Detection) -> Detection:
         """Finer outline from a larger view at the found position; the coarse result stays if refining fails or is too slow."""
@@ -133,8 +154,9 @@ class LearnedObjectDetector(Detector):
         """Crop search around where the tracker expects the object now; falls back to the last detection's spot."""
         assert self._last is not None
         x, y, th, long_side = self._last
-        if self.hint is not None:
-            hx, hy, hth = self.hint
+        hxy = self._hint_xy()
+        if hxy is not None:
+            (hx, hy), hth = hxy, self.hint[2]
             det = self._crop_search(img, (hx, hy, hth if math.isfinite(hth) else th, long_side))
             if det is not None or math.hypot(hx - x, hy - y) < 0.25 * max(self.crop_factor * long_side, 96.0):
                 return det                                   # same spot anyway: a second try would repeat the first
@@ -160,10 +182,14 @@ class LearnedObjectDetector(Detector):
         if det is None:
             if self._misses >= MAX_MISSES:
                 self._last = None
+                if self._fr is not None:
+                    self._fr.reset()
             return None
         self._misses = 0
         det = self._refine(img, det)
         xs, ys = det.contour[:, 0], det.contour[:, 1]
         long_side = float(math.hypot(xs.max() - xs.min(), ys.max() - ys.min()))   # diagonal: rotation-safe size
-        self._last = (det.x, det.y, det.theta, long_side / 1.2)
+        self._last = (det.x, det.y, det.theta, long_side / 1.2)      # searches stay centred on the MASK
+        if self._fr is not None and self.use_features:
+            return self._fr.refine(img, det)
         return det

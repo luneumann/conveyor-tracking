@@ -319,3 +319,6 @@ oder gemessene Soll-Positionen. (2) Die Karosse ist stark texturiert; glatte, ei
 
 **Entwurf, falls eingebaut:** Modell speichert je Anlernfoto Schlüsselpunkte + Deskriptoren (innerhalb der Maske, bei gewählter Region nur dort) und den Anker; Umschalter „Merkmals-Tracking" (Aus / Auto / An; Auto = an, wenn das Objekt > ca. 20 % der Bildbreite einnimmt);
 bei fehlgeschlagenem Abgleich Rückfall auf die Maske, **in derselben Anker-Konvention** (Anker aus Maskenlage und -winkel abgeleitet), damit die Pose nicht zwischen zwei Bezugspunkten springt.
+
+**Umgesetzt (03.10.2026):** `src/ctrack/features.py`, Anlern-Dialog mit optionaler Merkmalsregion, Schalter „Merkmals-Tracking“ (Aus/Automatisch/An), siehe ADR-014. Gemessen mit dem fertigen Detektor (nicht nur Prototyp):
+Rauschen x 8,64 → **0,46 px**, y 4,38 → **0,19 px** (Median), p90 x 25,7 → 2,4 px; Zeit je Bild 42 → 61 ms. Die Abdeckung schwankte zwischen zwei Läufen leicht (96 % / 94 %), vermutlich Lastschwankung des Rechners.

@@ -379,3 +379,28 @@ Gesamtsystem (Demo-Band, gelerntes Objekt, asynchrone Erkennung): 30 fps (= Kame
   ohne Beschleuniger). Standard-Bildmodell ist daher fp32 mit Beschleuniger, sonst INT8, sonst fp32.
 - **Abschaltbar:** `CTRACK_NO_ACCEL=1` (Tests setzen das; sie laufen auf der CPU).
 - Die Suche im ganzen Bild wird nur noch gedrosselt (jeder 3. Frame), solange sie langsamer als ~45 ms ist; mit Beschleuniger läuft sie auf jedem Frame.
+
+---
+
+## ADR-014 — Merkmals-Anker für große Objekte (Pose aus Bildmerkmalen statt aus dem Maskenrand)
+
+**Kontext:** Bei großen Objekten (Karosse) schwankt die Pose aus Maskenschwerpunkt und Hauptachse stark, weil jeder Fehler am langen Maskenrand
+sie verschiebt. Gemessen auf einem Förderband-Video: Rauschen (Median der zweiten Differenz) 8,6 px in x, 4,4 px in y; p90 25,7 / 13,6 px.
+
+**Entscheidung:** Die Maske liefert nur die grobe Lage (Suchgebiet, wie bisher). Die Pose kommt aus SIFT-Merkmalen innerhalb dieses Gebiets
+(`src/ctrack/features.py`): Referenzmerkmale der Anlernfotos werden im aktuellen Bild gefunden, eine Ähnlichkeitstransformation (RANSAC) bildet einen
+**festen Ankerpunkt** des Objekts ins Bild ab, ihre Drehung liefert θ. Anker = Mitte einer optional vom Nutzer markierten **Merkmalsregion** (dann zählen
+nur Merkmale dort), sonst Maskenschwerpunkt des ersten Fotos. Weil die Fotos aus verschiedenen Abständen/Winkeln stammen, wird der Anker über die jeweils
+besten Merkmalsabgleiche zwischen den Fotos in jedes Foto getragen. Merkmale werden bei auf ca. 600 px Diagonale normierter Objektgröße berechnet (vergleichbar über Abstände).
+
+- **Aus / Automatisch / An** (Voreinstellung automatisch): automatisch ist an, wenn das Objekt beim Anlernen breiter als 20 % des Bildes war. Kleine Objekte brauchen es nicht.
+- **Rückfall bei fehlendem Abgleich** (< 10 stimmige Merkmale): der Anker wird aus der Maske abgeleitet, **mit dem zuletzt gemessenen Versatz Anker–Maskenschwerpunkt im Objektkoordinatensystem**,
+  damit die Pose nicht zwischen zwei Bezugspunkten springt. Vor dem ersten Erfolg: Maskenpose.
+- Suchausschnitt und Vorhersage-Hinweis bleiben auf den **Maskenschwerpunkt** zentriert (der Hinweis wird um den Versatz zurückgerechnet).
+- Features liegen in derselben Datei wie das Objekt (`models/objects/<name>.npz`, Schlüssel `feat_*`); ältere Modelle ohne Merkmale funktionieren unverändert.
+
+**Ergebnis** (Karosse-Video, Erkennung je Bild, Anker = Tür): Rauschen x **0,46 px** (vorher 8,64), y **0,19 px** (4,38), p90 x 2,4 (25,7), y 1,2 (13,6); Zeit je Bild 42 → 61 ms (+ ca. 19 ms).
+Gemessen ist Glätte; die **absolute** Genauigkeit des Ankers ist damit nicht belegt (Verkettung der Fotos kann einen kleinen Versatz tragen).
+
+**Grenzen:** glatte, einfarbige Objekte liefern kaum Merkmale (dann Maskenpose, die Oberfläche meldet es nach dem Training); starke Blickwinkeländerungen lassen einzelne Referenzfotos
+ausfallen; Szenenschnitte im Video wirken auf beide Wege.

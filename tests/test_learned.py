@@ -398,3 +398,22 @@ def test_whole_frame_search_needs_a_higher_score_than_following_but_not_near_the
     score["v"] = 0.5
     det.hint = (330.0, 230.0, 0.0)
     assert det._global_search(img) is None                 # below even the following threshold
+
+
+@needs_vision
+def test_feature_mode_switch_and_hint_offset(trained):
+    from ctrack.features import FeatureModel, FeatureRefiner, FeatureView
+
+    path, _ = trained
+    det = LearnedObjectDetector(str(path), models_dir=str(MODELS))
+    assert not det.use_features                                   # object taught without features: mask pose
+    view = FeatureView(np.zeros((12, 2), np.float32), np.zeros((12, 128), np.float32), np.zeros(2, np.float32), 0.0)
+    for large, mode, expect in ((True, "auto", True), (False, "auto", False), (False, "on", True), (True, "off", False)):
+        det._fr = FeatureRefiner(FeatureModel([view], large=large))
+        det.feature_mode = mode
+        assert det.use_features is expect, (large, mode)
+    det._fr.last_offset_px = np.array([30.0, -10.0])
+    det.feature_mode, det.hint = "on", (400.0, 300.0, 0.0)
+    assert det._hint_xy() == (370.0, 310.0)                       # the tracker's hint is at the anchor: back to the mask centre
+    det.feature_mode = "off"
+    assert det._hint_xy() == (400.0, 300.0)

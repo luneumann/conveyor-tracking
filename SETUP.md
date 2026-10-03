@@ -64,6 +64,12 @@ Auf diesem Rechner ist es bereits geladen. Für bewegte Hand das Bewegungsprofil
 7. Name eintragen → **Trainieren** (ca. 15 s; beim allerersten Mal ca. 40 s, siehe unten). Danach ist das Objekt aktiv;
    **Tracking starten**.
 
+**Große Objekte (z. B. Karosse):** Die Pose aus der ganzen Maske kann schwanken. Darum verfolgt ctrack bei großen Objekten zusätzlich Bildmerkmale im Objekt
+(Einstellung **Merkmals-Tracking** im Schritt „Tracking“: *Automatisch* / *Immer an* / *Aus*; automatisch = an, wenn das Objekt beim Anlernen breiter als ca. 20 % des Bildes war).
+*Optional:* Beim Anlernen auf **Merkmalsregion …** drücken und auf dem **ersten Foto** ein Rechteck um den Bereich ziehen, dessen Merkmal verfolgt werden soll (z. B. Tür, Logo, Scheinwerfer,
+mit Kanten oder Beschriftung, keine glatte Fläche). Dessen Mitte wird der Bezugspunkt der Pose. Ohne Region ist der Bezugspunkt die Mitte des Objekts auf dem ersten Foto. Nach dem Trainieren meldet die Oberfläche,
+ob genug Merkmale gefunden wurden („Merkmals-Tracking bereit …“ oder „Zu wenige Merkmale … es wird die Maske genutzt“). Hintergrund: ADR-014.
+
 Tipps: Je unterschiedlicher die 5 Fotos, desto robuster. Wird fälschlich etwas anderes erkannt: **Mindest-Sicherheit**
 (Feineinstellungen) erhöhen oder mit mehr/anderen Fotos neu anlernen. Ist es zu langsam: **Tempo** auf *Schnell*
 (schneller, etwas ungenauer). Grenzen siehe ADR-011 (θ nur modulo 180°, Objekte kleiner als ~12 % der
