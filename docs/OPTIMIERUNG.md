@@ -182,3 +182,31 @@ Simulationen am 03.10. wegen Last auf dem Rechner (Load ≈ 10) nicht belastbar;
 
 **Bekannte Grenzen:** Das Quadrat hat keine Hauptachse — der Winkel aus den Momenten ist bei quadratischen Masken praktisch zufällig (Median 34° Fehler in
 dieser Messung). Eine Winkelbestimmung aus der Kontur (modulo 90°) fehlt noch.
+
+## 11. Zwischen-Tracking mit optischem Fluss (03.10.2026, Prototyp, nicht in die Pipeline eingebunden)
+
+**Idee:** Zwischen zwei Erkennungen verfolgt `ctrack/flow.py` (`FlowTracker`) die Textur des Objekts von Bild zu Bild (Lucas-Kanade auf Punkten innerhalb der
+letzten Kontur, Vorwärts-Rückwärts-Prüfung, RANSAC-Ähnlichkeitsfit) und schreibt (x, y, θ) fort. Jede Erkennung korrigiert den Fluss rückwirkend
+(`correct`: die Verschiebung seit dem Aufnahmezeitpunkt der Erkennung wird aufgerechnet). Ca. 1–3 ms je Bild, kein Modell, kein Download, liefert auch θ.
+(Ein Box-Tracker wie TrackerVit hätte nur eine Box und ein Modell zum Herunterladen gebraucht.)
+
+**Messung:** Deterministische Simulation auf dem Handy-Segment der Aufnahme. Referenzpose = präziser Detektor (168 + 336 px) je Bild. Simuliert wird ein
+langsamer Detektor: ein Ergebnis alle K Bilder, das D Bilder später eintrifft. Fehler der veröffentlichten Pose gegenüber der Referenz:
+
+| Erkennung | ohne Fluss: Median / p90 / max (px) | mit Fluss: Median / p90 / max (px) |
+|---|---|---|
+| alle 2 Bilder, 100 ms alt | 17,5 / 43 / 129 | 11,1 / 67 / 173 |
+| alle 4 Bilder, 133 ms alt | 30,7 / 81 / 226 | 14,3 / 104 / 260 |
+| alle 8 Bilder, 267 ms alt | 68 / 148 / 328 (nur 49 von 440 Bildern verfolgt) | 50 / 250 / 512 (410 von 440 verfolgt) |
+
+Winkelfehler (Median): 2,8° → 2,3° bzw. 4,4° → 2,8°.
+
+**Ergebnis, ehrlich:** Der Fluss halbiert den *typischen* Fehler und hält das Teil bei seltenen Erkennungen im Verfolgen — verschlechtert aber die
+*schlechtesten 10 %* (p90 und Maximum). Ursache laut Einzelbild-Analyse: Bei schneller Handbewegung (30–60 px je Bild) einigen sich die Punkte auf
+„nichts hat sich bewegt" (Bewegungsunschärfe, statischer Hintergrund gewinnt die RANSAC-Abstimmung), der Fluss meldet dem Filter hoch-zuversichtlich Stillstand und
+zerstört dessen Geschwindigkeitsschätzung. Drei Gegenmittel wurden gemessen und halfen **nicht**: höheres Messrauschen für Fluss-Messungen, Verwerfen großer
+Schritte, Abgleich mit der erwarteten Verschiebung des Filters; ebenso eine Geschwindigkeitsgrenze (Median wird dadurch wieder schlechter, die Ausreißer bleiben).
+
+**Deshalb nicht eingebunden.** Der Test ist an *ruckartiger Handbewegung* gemessen, dem schwierigsten Fall für Fluss; ein gleichmäßig laufendes Band (das Ziel)
+ist günstiger für den Fluss, aber dort ist auch das Kalman-Modell mit konstanter Geschwindigkeit bereits gut. Ob sich die Einbindung lohnt, sollte an einer
+Bandaufnahme entschieden werden. Neu ist außerdem `Detection.noise_scale` (Messrauschen je Messung), vorbereitet für gewichtete Fluss-Messungen.

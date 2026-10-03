@@ -63,6 +63,7 @@ class Detection:
     confidence: float
     keypoints: np.ndarray | None = field(default=None, compare=False)
     contour: np.ndarray | None = field(default=None, compare=False)  # (n, 2) outline in frame pixels, for the overlay
+    noise_scale: float = 1.0   # >1: a less trustworthy measurement (e.g. optical-flow propagation), scales the position std
 
     @property
     def pose(self) -> Pose:

@@ -62,7 +62,7 @@ class Tracker:
                 self._acquire(detection, t)
         elif s in (TrackState.TRACKING, TrackState.COASTING):
             if detection is not None:
-                self.predictor.update(detection.pose, t)
+                self.predictor.update(detection.pose, t, detection.noise_scale)
                 self.t_last_seen = t
                 self.state = TrackState.TRACKING
             elif t - self.t_last_seen > self.coast_s:

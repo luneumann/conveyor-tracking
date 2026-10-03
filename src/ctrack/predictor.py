@@ -69,7 +69,7 @@ class KalmanPredictor:
         x[_THETA] = wrap_angle(x[_THETA])
         return x, F @ self.P @ F.T + Q
 
-    def update(self, pose: Pose, t: float) -> None:
+    def update(self, pose: Pose, t: float, noise_scale: float = 1.0) -> None:
         """Advance to time t and fuse a measurement. Initializes on first call."""
         if not self.initialized:
             self.init(pose, t)
@@ -78,12 +78,13 @@ class KalmanPredictor:
         z = np.array([pose.x, pose.y, pose.theta])
         y = z - _H @ x
         y[_THETA] = wrap_angle(y[_THETA])  # innovation across ±pi must not jump
-        S = _H @ P @ _H.T + self.R
+        R = self.R * noise_scale**2 if noise_scale != 1.0 else self.R
+        S = _H @ P @ _H.T + R
         K = P @ _H.T @ np.linalg.inv(S)
         x = x + K @ y
         x[_THETA] = wrap_angle(x[_THETA])
         I_KH = np.eye(6) - K @ _H
-        self.P = I_KH @ P @ I_KH.T + K @ self.R @ K.T  # Joseph form, stays symmetric PSD
+        self.P = I_KH @ P @ I_KH.T + K @ R @ K.T  # Joseph form, stays symmetric PSD
         self.x = x
         self.t = max(t, self.t)
 
