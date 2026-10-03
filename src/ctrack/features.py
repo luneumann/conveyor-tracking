@@ -152,8 +152,11 @@ class FeatureModel:
                                        d[f"{prefix}_roiwh_{i}"] if f"{prefix}_roiwh_{i}" in d else None))
             return out
 
-        views = load("feat", int(d["feat_n"]))
-        fast = load("featf", int(d["featf_count"])) if "featf_count" in d and int(d["featf_count"]) else None
+        try:
+            views = load("feat", int(d["feat_n"]))
+            fast = load("featf", int(d["featf_count"])) if "featf_count" in d and int(d["featf_count"]) else None
+        except KeyError:
+            return None     # saved by an earlier prototype layout: behave like a model taught without features
         return cls(views, bool(d["feat_large"]), bool(d["feat_region"]), float(d["feat_markdev"]), fast) if views else None
 
 
