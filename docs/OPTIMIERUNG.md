@@ -275,3 +275,23 @@ EdgeTAM hielt das Handy auch hochkant und fast kantenparallel in der Hand (Bilde
 
 **Mögliche Architektur (nicht gebaut):** Unser Detektor erkennt und liefert die Box (ersetzt die Handbox), EdgeTAM führt die präzise Maske mit, unser Detektor prüft alle N Bilder, ob die Maske noch das gelernte Objekt ist
 (fängt Fehlmasken ab) und gibt bei Verlust eine neue Box. Voraussetzung: Echtzeit-Gesamtzeit auf CoreML belegen.
+
+### 14a. EdgeTAM auf CoreML: Gesamtzeit je Bild (03.10.2026)
+
+Das offizielle CoreML-Export enthält nur Bildencoder, Prompt-Encoder und Masken-Decoder. Die Gedächtnis-Aufmerksamkeit (memory attention) habe ich selbst exportiert
+(Rotations-Positionscodierung von komplexen auf reelle Zahlen umgeschrieben, da CoreML keine komplexen Zahlen kennt; Ergebnis gegen PyTorch geprüft: Kosinus-Ähnlichkeit 1,00000,
+größte Abweichung 0,005 bei Mittelwert 0,415). Messung auf diesem Mac (Median, Neural Engine wo möglich, feste Formen wie im eingeschwungenen Zustand: 4096 Anfrage-Tokens, 3640 Gedächtnis-Tokens):
+
+| Baustein | CoreML (Neural Engine) | PyTorch Apple-GPU (MPS) |
+|---|---|---|
+| Bildencoder (1024²) | 23 ms | 187 ms |
+| Gedächtnis-Aufmerksamkeit | **72 ms** | 92 ms |
+| Masken-Decoder | 18 ms | 72 ms (inkl. Zusatzköpfe) |
+| Gedächtnis-Encoder | nicht exportiert | 25 ms |
+| Rest (Mask hochskalieren, Löcher füllen, Zusammenbau) | nicht gemessen | ca. 80 ms |
+
+**Untergrenze:** 23 + 72 + 18 = **113 ms je Bild, also höchstens ca. 9 Bilder/s**, noch ohne Gedächtnis-Encoder, Perceiver und Nachbearbeitung. Realistisch eher 6–8 Bilder/s. Zum Vergleich unser Detektor:
+11–30 ms je Erkennung. Die Gedächtnis-Aufmerksamkeit (zwei Schichten, volle 64×64-Anfrage gegen 3640 Gedächtnis-Tokens) ist der Engpass und lässt sich auf der Neural Engine kaum schneller machen als in PyTorch.
+
+**Folgerung:** EdgeTAM ist auf diesem Gerät **nicht echtzeitfähig im Sinne von 25–30 Bildern/s** und taugt, wenn überhaupt, als *langsamer Verfeinerer* (wenige Hz) neben dem schnellen Detektor, nicht als Haupt-Tracker.
+Die bessere Maskenqualität (IoU 0,94–0,97) bleibt ein Argument für einen Genau-Modus bei niedriger Rate; das müsste gegen den Aufwand (PyTorch 2.7, eigener Export, nur Mac) abgewogen werden.
