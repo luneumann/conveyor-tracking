@@ -245,3 +245,33 @@ großen, gleichmäßig bewegten Objekt, auch mit schwenkender Kamera.
 **Wann es sich lohnt:** feste, bekannte Serienteile mit 100–300 labelbaren Bildern und Bedarf an wenigen ms je Erkennung (Stufe 2). Einhängen als neue `Detector`-Klasse per Registry, Tracker/Ausgabe bleiben unverändert; für θ eine OBB- oder Segmentierungsvariante nehmen und mit `tools/eval_recording.py` gegen den Standard messen.
 
 **Quelle der Einordnung:** liveimagetrackingtools.org ist eine Zell-Tracking-Community (Mikroskopie, offline, mehrere Objekte); übertragbar wäre höchstens die Zuordnung mehrerer Teile (LAP-Verfahren) und die Trennung von Erkennungs- und Verknüpfungsmetriken.
+
+## 14. EdgeTAM-Test (03.10.2026): Maskenverfolgung mit Memory statt Kachelmaske
+
+**Was getestet wurde:** EdgeTAM (Apache-2.0, 13,9 M Parameter, SAM-2-Ableger) in einer getrennten Umgebung (PyTorch, nicht im Projekt-venv). Eingabe: **eine Box im ersten Bild**, danach
+wird die Maske ohne weiteres Zutun durchs Video fortgeführt. Gemessen gegen dieselben Referenzmasken wie in Abschnitt 7/12 (SAM-Masken aus Boxen — das begünstigt
+SAM-artige Verfahren, siehe Vorbehalt).
+
+| Video | Methode | IoU (Median) | Mittelpunktfehler (% Objektgröße) | Winkelfehler (Median) |
+|---|---|---|---|---|
+| Karosse, 6 Testbilder | unser Detektor (5 Anlernbilder) | 0,79 | 1,9 | 0,5° |
+| Karosse, 6 Testbilder | EdgeTAM (1 Box) | **0,94** | **0,8** | 1,0° |
+| Handy, 8 Testbilder | unser Detektor (5 Anlernbilder) | 0,81 | 3,7 | 3,6° |
+| Handy, 8 Testbilder | EdgeTAM (1 Box, 475 Bilder fortgeführt) | **0,97** | **0,5** | 0,7° |
+
+EdgeTAM hielt das Handy auch hochkant und fast kantenparallel in der Hand (Bilder 500–559) mit sauberer Maske.
+
+**Schwächen (gemessen):**
+- **Abwesenheit:** Nachdem das Handy das Bild verließ (ab Bild ~570), ging die Maske richtig auf 0, zeigte aber in 25 von 430 Bildern (5,8 %) eine falsche Maske (einmal 12,6 % der Bildfläche).
+  Es gibt keine Wiedererkennung: kehrt das Objekt zurück, braucht EdgeTAM einen neuen Prompt.
+- **Tempo:** PyTorch auf Apple-GPU (MPS): ca. 2,3 Bilder/s (430 ms je Bild) — nicht echtzeitfähig. Das CoreML-Export (nur Bildencoder, Prompt-Encoder, Masken-Decoder) ergab für den
+  **Bildencoder allein 23 ms** (Neural Engine; 93 ms Apple-GPU, 200 ms CPU). Die Memory-Module (Gedächtnis-Aufmerksamkeit/-Encoder), die das Fortführen erst ermöglichen, sind in dem Export
+  **nicht enthalten**. Die Gesamtzeit je Bild ist daher **nicht gemessen**; die Quelle nennt 16 fps auf einem iPhone 15 Pro Max.
+- **Plattform:** Der Weg über CoreML gilt nur für Mac/iOS; ein ONNX-Export ist nicht dokumentiert (Windows offen).
+- **Aufwand:** Export klappte erst mit PyTorch 2.7 (mit 2.14 brach er ab), Repo 348 MB, mehrere Hilfspakete.
+
+**Vorbehalt:** Referenzmasken stammen aus SAM, EdgeTAM ist SAM-artig; der Abstand zu unserem Detektor ist vermutlich teilweise darauf zurückzuführen. Dass die Masken optisch sauber sind, zeigte aber auch die Sichtprüfung
+(Handy, Bilder 160–555). Nur 14 Testbilder, ein Prompt je Video.
+
+**Mögliche Architektur (nicht gebaut):** Unser Detektor erkennt und liefert die Box (ersetzt die Handbox), EdgeTAM führt die präzise Maske mit, unser Detektor prüft alle N Bilder, ob die Maske noch das gelernte Objekt ist
+(fängt Fehlmasken ab) und gibt bei Verlust eine neue Box. Voraussetzung: Echtzeit-Gesamtzeit auf CoreML belegen.
