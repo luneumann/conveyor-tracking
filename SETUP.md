@@ -159,7 +159,7 @@ done
 
 ### GitHub
 
-Das Projekt liegt in einem privaten Repo: https://github.com/luneumann/conveyor-tracking (Branch `main`).
+Das Projekt liegt auf GitHub: https://github.com/luneumann/ctrack (Branch `main`).
 
 ## Nach jeder Änderung
 

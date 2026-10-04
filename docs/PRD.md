@@ -191,7 +191,7 @@ Keine harte Deadline. Vorgeschlagene Iterationen, je eine abgeschlossene, lauff�
 ## 10. Vorgeschlagene Projektstruktur
 
 ```
-conveyor-tracking/
+ctrack/
 ├── config/default.yaml
 ├── src/ctrack/
 │   ├── main.py              # Pipeline-Loop, Tastensteuerung
